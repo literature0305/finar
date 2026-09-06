@@ -1,0 +1,40 @@
+# ===========================================================================
+# exp003 — the 5k training subset, scored at three horizons
+# ===========================================================================
+# Built by build_subset.py, which draws 5,000 series from a training yaml's
+# mixture using tsm-trainer's own sampling rule (dataset picked in proportion
+# to data_points x custom_weight, row uniform inside it) and keeps only series
+# of at least 500 steps.
+#
+# THREE ENTRIES, ONE CORPUS. The evaluator names a result row after the
+# dataset NAME, so listing the same directory three times under three
+# prediction_lengths would emit three rows that cannot be told apart — and the
+# pairwise tools reject a csv with duplicate keys outright. build_subset.py
+# therefore creates `_h48` / `_h160` / `_h320` SYMLINKS beside the corpus:
+# three names, one copy of the data.
+#
+# offset = -prediction_length with num_rolls 1 scores exactly the last H steps
+# of each series once. At H=320 a 500-step series leaves only 180 steps of
+# context, so the long horizon is deliberately the hardest of the three — that
+# spread is the point of the sweep, not an accident to correct.
+#
+#   H=48   3 patches   context >= 452
+#   H=160  10 patches  context >= 340
+#   H=320  20 patches  context >= 180
+# (at input_patch_size 16)
+# ===========================================================================
+datasets_root: /group-volume/ts-dataset
+
+datasets:
+  - name: train_subset_5k_h48
+    offset: -48
+    prediction_length: 48
+    num_rolls: 1
+  - name: train_subset_5k_h160
+    offset: -160
+    prediction_length: 160
+    num_rolls: 1
+  - name: train_subset_5k_h320
+    offset: -320
+    prediction_length: 320
+    num_rolls: 1
