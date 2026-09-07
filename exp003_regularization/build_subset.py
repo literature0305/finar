@@ -395,13 +395,31 @@ def materialise(plan, out_dir: Path, freq_default: str = "h"):
     at most BATCH rows exist as Python objects at any moment. The small columns
     (item_id / start / freq are short strings) are cheap and are read directly.
 
-    The normalisation also has to happen: the corpora disagree about whether a
-    target is 1-D (univariate, `list<float>`) or 2-D (`list<list<float>>`), and
-    `concatenate_datasets` refuses a schema mismatch. Everything is widened to
-    2-D, so one univariate series becomes a 1 x T row.
+    The normalisation also has to happen, along TWO axes, because
+    `concatenate_datasets` refuses any schema mismatch:
+
+    NESTING. The corpora disagree about whether a target is 1-D (univariate,
+    `list<float>`) or 2-D (`list<list<float>>`). Everything is widened to 2-D,
+    so one univariate series becomes a 1 x T row.
+
+    VALUE DTYPE. They also disagree about the element type — float32, float64
+    and int64 all appear in the EO v4 mixture — and `map` carries the source
+    dtype through, so widening alone still ends in
+
+        ValueError: The features can't be aligned because the key target ...
+                    has unexpected type
+
+    Passing an explicit `features` pins one dtype for every part. float32 is
+    the normal form because it is what every consumer casts to anyway
+    (`np.asarray(inp["target"], dtype=np.float32)` in the evaluator's
+    eo_pipeline and in train_chronos2's task builder), and because it can only
+    make `estimate`'s output figure — computed from the SOURCE arrow bytes —
+    conservative rather than optimistic.
     """
     import datasets as hf
 
+    target_features = hf.Features(
+        {"target": hf.Sequence(hf.Sequence(hf.Value("float32")))})
     parts = []
     for path, idx in plan.items():
         sub = load_split(path).select(idx.tolist())
@@ -426,6 +444,7 @@ def materialise(plan, out_dir: Path, freq_default: str = "h"):
 
         sub = sub.map(widen, batched=True, batch_size=BATCH,
                       writer_batch_size=BATCH, remove_columns=cols,
+                      features=target_features,
                       desc=Path(path).name[:32], load_from_cache_file=False)
         name = Path(path).name
         sub = sub.add_column("item_id", [f"{name}__{i}" for i in idx.tolist()])
