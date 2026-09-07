@@ -45,6 +45,11 @@ WHAT COMES OUT
                                            source yaml, seed, per-dataset draw
                                            counts, realised vs configured share
 
+READING THE CORPORA. Entries saved by datasets 3.x/4.x encode their target
+column as ``"_type": "List"``, which the pinned datasets 2.x cannot resolve.
+tsm-trainer's own List -> Sequence patch is applied (imported, not copied)
+before anything is opened; see `apply_datasets_compat`.
+
 Usage
 -----
     python build_subset.py --config <training yaml> --repo <tsm-trainer>
@@ -78,6 +83,105 @@ def add_repo_to_path(repo: Path) -> None:
     for p in (str(tr), str(repo / "src")):
         if p not in sys.path:
             sys.path.insert(0, p)
+
+
+_COMPAT_DONE = False
+
+
+def apply_datasets_compat(repo: Path | None = None) -> None:
+    """Teach datasets 2.x to read a corpus that datasets 3.x/4.x wrote.
+
+    3.x renamed the ``Sequence`` feature to ``List``, so a corpus saved by it
+    carries ``"_type": "List"`` in ``dataset_info.json`` and in the arrow
+    schema metadata. datasets 2.x — what tsm-trainer pins
+    (``datasets>=2.17.1,<3``) — resolves that name through the ``globals()``
+    of ``features.generate_from_dict``, where ``List`` is ``typing.List``,
+    and then dies inside ``dataclasses.fields`` with
+
+        TypeError: must be called with a dataclass type or instance
+
+    which is not recognisable as a version-skew message at all. It is what
+    stopped this file on the tsmixup corpora. TRAINING never hit it because
+    ``train_chronos2._open_hf_dataset`` applies this patch before every
+    ``load_from_disk``; this file was the one reader that did not, so a
+    mixture the trainer reads happily could not be sampled from.
+
+    tsm-trainer's canonical copy is imported rather than reimplemented, for
+    the same reason the mixture parser is: one definition, one place to fix.
+    ANY failure to use it — file moved, function renamed, module raising on
+    import — falls through to the inline copy, because this runs before a
+    single corpus is opened and a compat shim that stops the build is worse
+    than no shim at all.
+    """
+    global _COMPAT_DONE
+    if _COMPAT_DONE:
+        return
+
+    import datasets.features.features as ff
+
+    # tsm-trainer flags this same patch two different ways: _prepare_common
+    # marks the MODULE (`_tsm_list_patch`), train_chronos2 marks the installed
+    # FUNCTION (`_list_patched`). Read and write both, or whichever of the two
+    # runs second fails to recognise the first and wraps generate_from_dict a
+    # second time.
+    if not (getattr(ff, "_tsm_list_patch", False)
+            or getattr(ff.generate_from_dict, "_list_patched", False)):
+        canonical = ((repo or DEFAULT_REPO) / "scripts" / "forecasting" /
+                     "preprocess" / "downloaders" / "_prepare_common.py")
+        try:
+            if not canonical.is_file():
+                raise FileNotFoundError(canonical)
+            import importlib.util
+            # By file path, NOT by putting the directory on sys.path: the
+            # module is named `_prepare_common`, which is far too generic to
+            # import as a top-level name, and it needs no package context (its
+            # module-level imports are stdlib only).
+            spec = importlib.util.spec_from_file_location("tsm_prepare_common",
+                                                          canonical)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.apply_datasets_compat_patch()
+        except Exception as e:
+            logger.warning("cannot use tsm-trainer's copy of the "
+                           "List -> Sequence patch (%s: %s) — falling back to "
+                           "the inline one", type(e).__name__, e)
+            orig = ff.generate_from_dict
+
+            def _patched(obj):
+                if isinstance(obj, dict) and obj.get("_type") == "List":
+                    obj = {**obj, "_type": "Sequence"}
+                return orig(obj)
+
+            ff.generate_from_dict = _patched
+
+    ff._tsm_list_patch = True
+    try:
+        ff.generate_from_dict._list_patched = True
+    except AttributeError:      # not taggable; the module flag still holds
+        pass
+    _COMPAT_DONE = True
+
+
+def load_split(path, split: str = "train"):
+    """``load_from_disk`` plus split selection, through the compat patch.
+
+    Every read of a mixture corpus goes through here, so the patch cannot be
+    applied on one code path and forgotten on another — it was forgotten on
+    all three, and the three failed identically.
+    """
+    apply_datasets_compat()
+    import datasets as hf
+
+    ds = hf.load_from_disk(str(path))
+    if not hasattr(ds, "keys"):        # a bare Dataset, not a DatasetDict
+        return ds
+    if split in ds:
+        return ds[split]
+    available = list(ds.keys())
+    if not available:
+        raise SystemExit(f"{path} is an empty DatasetDict — no split to read")
+    logger.warning("%s has no %r split — using %r", path, split, available[0])
+    return ds[available[0]]
 
 
 def load_mixture(config_path: Path, repo: Path):
@@ -121,10 +225,8 @@ def eligible_rows(path: str, min_length: int, target_col: str = "target"):
     """
     import numpy as np
     import pyarrow.compute as pc
-    from datasets import load_from_disk
 
-    ds = load_from_disk(path)
-    ds = ds["train"] if hasattr(ds, "keys") else ds
+    ds = load_split(path)
     if target_col not in ds.column_names:
         cand = [c for c in ds.column_names if c not in
                 ("item_id", "start", "freq", "id", "timestamp")]
@@ -260,10 +362,7 @@ def _row_bytes(path: str) -> int:
     """Bytes per row on disk, from the arrow files — no rows are read."""
     files = list(Path(path).rglob("*.arrow"))
     n_bytes = sum(f.stat().st_size for f in files)
-    from datasets import load_from_disk
-    ds = load_from_disk(path)
-    ds = ds["train"] if hasattr(ds, "keys") else ds
-    return int(n_bytes / max(len(ds), 1))
+    return int(n_bytes / max(len(load_split(path)), 1))
 
 
 def estimate(plan) -> dict:
@@ -305,9 +404,7 @@ def materialise(plan, out_dir: Path, freq_default: str = "h"):
 
     parts = []
     for path, idx in plan.items():
-        ds = hf.load_from_disk(path)
-        ds = ds["train"] if hasattr(ds, "keys") else ds
-        sub = ds.select(idx.tolist())
+        sub = load_split(path).select(idx.tolist())
         cols = sub.column_names
         tgt = "target" if "target" in cols else next(
             c for c in cols if c not in ("item_id", "start", "freq", "id",
@@ -380,6 +477,9 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         datefmt="%H:%M:%S")
 
+    # Before any corpus is opened: the mixture's tsmixup entries are saved in
+    # the datasets 3.x feature encoding, which 2.x cannot read unpatched.
+    apply_datasets_compat(args.repo)
     mixture = load_mixture(args.config, args.repo)
     logger.info("mixture: %d entries from %s", len(mixture), args.config.name)
 
