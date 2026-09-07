@@ -196,6 +196,26 @@ def cell_name(phi: str, shuf: str, group: str) -> str:
     return f"phi{phi}_sh{shuf}_gp{group}"
 
 
+def target_features():
+    """The on-disk schema, shared by every writer of one of these corpora.
+
+    EXPLICIT, because inference gets it wrong in the expensive direction:
+    `Dataset.from_dict` sees a list of Python floats and infers `double`, so a
+    float32 array round-trips to disk at twice its size. Measured: 16.8 MB per
+    shard inferred against 8.4 MB pinned, i.e. half of the corpus and half of
+    the views `run_eval.py` derives from it. `run_eval.py` imports this rather
+    than restating it, so the two writers cannot drift apart.
+    """
+    import datasets as hf
+
+    return hf.Features({
+        "item_id": hf.Value("string"),
+        "start": hf.Value("string"),
+        "freq": hf.Value("string"),
+        "target": hf.Sequence(hf.Sequence(hf.Value("float32"))),
+    })
+
+
 def groups_of(V: int, size: int) -> list[list[int]]:
     """Contiguous variate groups. ``size=1`` is V groups of one."""
     return [list(range(i, min(i + size, V))) for i in range(0, V, size)]
@@ -205,17 +225,24 @@ def groups_of(V: int, size: int) -> list[list[int]]:
 # Latent factors
 # --------------------------------------------------------------------------
 
-def oscillator_bank(n: int, M: int, T: int, rng, periods=PERIODS) -> np.ndarray:
-    """``(n, T, M)`` unit-variance oscillators, period drawn per item per bank.
+def oscillator_bank(n: int, M: int, T: int, rng
+                    ) -> tuple[np.ndarray, np.ndarray]:
+    """``((n, T, M) oscillators, (n, M) periods)``, period drawn per item.
 
     sqrt(2) scales a sinusoid to unit variance, so `phi` and `beta` stay exact
     variance shares rather than approximate ones.
+
+    Written in place: the buffer is (n, T, M) float64 — 134 MB at the default
+    N — and the naive expression holds three of them at once.
     """
     t = np.arange(T, dtype=np.float64)[None, :, None]
-    period = np.asarray(periods, dtype=np.float64)[
-        rng.integers(0, len(periods), size=(n, 1, M))]
+    period = np.asarray(PERIODS, dtype=np.float64)[
+        rng.integers(0, len(PERIODS), size=(n, 1, M))]
     phase = rng.uniform(0, 2 * np.pi, size=(n, 1, M))
-    return np.sqrt(2.0) * np.sin(2 * np.pi * t / period + phase), period[:, 0, :]
+    buf = 2 * np.pi * t / period + phase
+    np.sin(buf, out=buf)
+    buf *= np.sqrt(2.0)
+    return buf, period[:, 0, :]
 
 
 #: CauKer's activation bank, restricted to maps that are zero-preserving and
@@ -266,20 +293,28 @@ def couple(s: np.ndarray, edges, kappa: float, lag: int) -> np.ndarray:
     out = np.zeros_like(s)
     for child, parent, act, w in edges:
         out[..., child] += w * ACTIVATIONS[act](lagged[..., parent])
-    c = (1.0 - kappa) * s + kappa * out
-    sd = c.std(axis=(0, 1), keepdims=True)
-    return c / np.where(sd > 0, sd, 1.0)
+    # In place from here: every one of these is (n, T, V) float64, 134 MB at
+    # the default N, and `(1-kappa) * s + kappa * out` would hold two more.
+    del lagged
+    out *= kappa
+    out += (1.0 - kappa) * s
+    sd = out.std(axis=(0, 1), keepdims=True)
+    out /= np.where(sd > 0, sd, 1.0)
+    return out
 
 
 def build_base(n: int, V: int, T: int, phi: float, beta: float, size: int,
-               kappa: float, lag: int, p_max: int, rng
-               ) -> tuple[np.ndarray, np.ndarray, list, np.ndarray]:
-    """One (phi, group) cell BEFORE shuffling — ``(Y, factor, edges, periods)``.
+               kappa: float, lag: int, p_max: int, rng, split: int
+               ) -> tuple[np.ndarray, float, list, np.ndarray]:
+    """One (phi, group) cell BEFORE shuffling — ``(Y, explained, edges, per)``.
 
     ``Y`` is ``(n, T, V)`` and is the observed series: there is no backbone to
     add on top of it, which is the whole point (see the module docstring).
-    ``factor`` is the deterministic part, returned so the caller can MEASURE
-    the explained share rather than trust the algebra.
+
+    ``explained`` is MEASURED here rather than trusted from the algebra, and it
+    comes back as the scalar it is: the deterministic part is another 134 MB
+    array at the default N, and returning it would keep it alive beside ``Y``
+    and the shuffled copy for the whole of the caller's inner loop.
     """
     gs = groups_of(V, size)
     n_shared = 4
@@ -287,8 +322,8 @@ def build_base(n: int, V: int, T: int, phi: float, beta: float, size: int,
     per = np.empty((n, V))
     edges: list = []
     for g in gs:
-        shared, p_sh = oscillator_bank(n, n_shared, T, rng)
-        priv, p_pr = oscillator_bank(n, len(g), T, rng)
+        shared, _ = oscillator_bank(n, n_shared, T, rng)   # shared periods
+        priv, p_pr = oscillator_bank(n, len(g), T, rng)     # are not recorded
         w = rng.normal(size=n_shared)
         w /= np.linalg.norm(w)
         common = shared @ w                                   # (n, T)
@@ -298,9 +333,11 @@ def build_base(n: int, V: int, T: int, phi: float, beta: float, size: int,
             per[:, c] = p_pr[:, j]
         edges += sample_dag(g, p_max, rng)
     x = couple(s, edges, kappa, lag)
-    xi = rng.normal(size=(n, T, V))
-    Y = np.sqrt(phi) * x + np.sqrt(1.0 - phi) * xi
-    return Y, np.sqrt(phi) * x, edges, per
+    explained = float(phi * x[:, split:].var())
+    Y = rng.normal(size=(n, T, V))
+    Y *= np.sqrt(1.0 - phi)
+    Y += np.sqrt(phi) * x
+    return Y, explained, edges, per
 
 
 def apply_shuffle(Y: np.ndarray, frac: float, rng) -> np.ndarray:
@@ -353,17 +390,35 @@ def observed_corr(Y: np.ndarray, lo: int, hi: int) -> tuple[float, float]:
             float(np.mean(ab)) if ab else 0.0)
 
 
-def _ridge_r2(X, Y, lam, rng, frac=0.7) -> float:
-    n = len(X)
-    idx = rng.permutation(n)
-    tr, te = idx[:int(frac * n)], idx[int(frac * n):]
+#: Ridge penalties the probe sweeps; the best is reported.
+PROBE_LAMBDAS = (1e-2, 1e-1, 1.0)
+
+
+def _ridge_r2(X, Y, tr, te, lams=PROBE_LAMBDAS) -> float:
+    """Best held-out R^2 over ``lams``, on a split the CALLER chose.
+
+    The split is a parameter, not drawn here, because the number this feeds is
+    a COMPARISON between two designs on the same rows — drawing it per call
+    would score the own-channel and all-channel models on different test sets
+    and put their difference partly down to the draw.
+
+    The Gram matrix does not depend on the penalty, so it is built once and
+    only the diagonal moves across the sweep. For the all-channel design that
+    is a 512x512 Gram over 1433 rows, which the naive loop rebuilt three times.
+    """
     mx, my = X[tr].mean(0), Y[tr].mean(0)
     Xt = X[tr] - mx
-    W = np.linalg.solve(Xt.T @ Xt + lam * len(tr) * np.eye(X.shape[1]),
-                        Xt.T @ (Y[tr] - my))
-    P = (X[te] - mx) @ W + my
-    den = ((Y[te] - Y[te].mean(0)) ** 2).mean()
-    return float(1.0 - ((Y[te] - P) ** 2).mean() / den) if den > 0 else 0.0
+    G, B = Xt.T @ Xt, Xt.T @ (Y[tr] - my)
+    Xte, Yte = X[te] - mx, Y[te]
+    den = ((Yte - Yte.mean(0)) ** 2).mean()
+    if den <= 0:
+        return 0.0
+    eye = np.eye(X.shape[1]) * len(tr)
+    best = -np.inf
+    for lam in lams:
+        P = Xte @ np.linalg.solve(G + lam * eye, B) + my
+        best = max(best, 1.0 - ((Yte - P) ** 2).mean() / den)
+    return float(best)
 
 
 def cross_channel_probe(Y: np.ndarray, context: int, horizon: int, rng,
@@ -388,11 +443,14 @@ def cross_channel_probe(Y: np.ndarray, context: int, horizon: int, rng,
     n = min(n, n_items)
     a = T - horizon
     ctx, hor = Y[:n, a - context:a:stride, :], Y[:n, a:, :]
-    lams = (1e-2, 1e-1, 1.0)
-    own = [max(_ridge_r2(ctx[:, :, v], hor[:, :, v], l, rng) for l in lams)
-           for v in range(V)]
-    allc = [max(_ridge_r2(ctx.reshape(n, -1), hor[:, :, v], l, rng)
-                for l in lams) for v in range(V)]
+    # ONE split for the whole probe, and the flattened design hoisted out of
+    # the comprehension — `ctx` is strided, so the reshape cannot alias and
+    # copies the whole context block on every one of the V iterations.
+    idx = rng.permutation(n)
+    tr, te = idx[:int(0.7 * n)], idx[int(0.7 * n):]
+    ctx_all = ctx.reshape(n, -1)
+    own = [_ridge_r2(ctx[:, :, v], hor[:, :, v], tr, te) for v in range(V)]
+    allc = [_ridge_r2(ctx_all, hor[:, :, v], tr, te) for v in range(V)]
     return {"r2_own_channel": float(np.mean(own)),
             "r2_all_channels": float(np.mean(allc)),
             "cross_channel_gain": float(np.mean(allc) - np.mean(own)),
@@ -417,8 +475,12 @@ def save_cell(Y: np.ndarray, root: Path, name: str, freq: str, start: str,
     """
     from datasets import Dataset, DatasetDict
 
-    arr = np.ascontiguousarray(Y.transpose(0, 2, 1).astype(np.float32))
-    digest = hashlib.sha256(arr.tobytes()).hexdigest()
+    # `order="C"` on the astype rather than a second `ascontiguousarray` pass:
+    # the transpose is not C-contiguous, so the default `order="K"` result gets
+    # copied again. `sha256` reads the buffer directly, so `tobytes()` — a
+    # third 67 MB copy per cell, made only to be hashed — is not needed.
+    arr = Y.transpose(0, 2, 1).astype(np.float32, order="C")
+    digest = hashlib.sha256(arr).hexdigest()
     n = arr.shape[0]
     bounds = np.linspace(0, n, shards + 1).astype(int)
     for k, (a, b) in enumerate(zip(bounds[:-1], bounds[1:])):
@@ -430,7 +492,7 @@ def save_cell(Y: np.ndarray, root: Path, name: str, freq: str, start: str,
             "start": [start] * len(part),
             "freq": [freq] * len(part),
             "target": [x.tolist() for x in part],
-        })
+        }, features=target_features())
         out = root / (name if shards == 1 else f"{name}_s{k:02d}")
         out.mkdir(parents=True, exist_ok=True)
         DatasetDict({"train": ds}).save_to_disk(str(out))
@@ -514,16 +576,16 @@ def main() -> int:
             # interpreter unless PYTHONHASHSEED is pinned, so a hash-derived
             # seed rebuilds a DIFFERENT corpus on every run. This build has
             # been bitten by exactly that before.
-            rng = np.random.default_rng(args.seed + 1000 * gi + 100 * pi)
-            base, factor, edges, per = build_base(
+            base_seed = args.seed + 1000 * gi + 100 * pi
+            rng = np.random.default_rng(base_seed)
+            base, explained_raw, edges, per = build_base(
                 n, V, T, phi, args.beta, size, args.kappa, args.lag,
-                args.p_max, rng)
-            explained = float(factor[:, split:].var()
-                              / base[:, split:].var())
+                args.p_max, rng, split)
+            explained = explained_raw / float(base[:, split:].var())
             for si, (sl, frac) in enumerate(SHUFFLE_LEVELS.items()):
                 name = cell_name(pl, sl, gl)
-                Y = apply_shuffle(base, frac, np.random.default_rng(
-                    args.seed + 1000 * gi + 100 * pi + 10 + si))
+                Y = apply_shuffle(base, frac,
+                                   np.random.default_rng(base_seed + 10 + si))
                 sg, ab = observed_corr(Y, split, T)
                 cell = {
                     "phi_level": pl, "phi": phi,

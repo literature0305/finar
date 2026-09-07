@@ -40,11 +40,30 @@ VIEW of it. Two things follow, and both are the point:
 Fixing the context is not cosmetic. With ``offset = -H`` the evaluator's
 context is everything before the split, so it would otherwise be ``2048 - H``
 and shrink by a factor of 64 across this sweep — the H axis would then vary
-horizon length and context length together. The evaluator has no context-length
-knob (`gluonts_split` takes the whole prefix) and its `series_end` trimming
-cannot express this either: `series_trim` requires the trimmed series to hold
-``|offset| + prediction_length = 2H`` steps, so a view of ``512 + H`` would drop
-every series at H > 512. Materialising the view is the way that works.
+horizon length and context length together.
+
+WHY THE VIEWS ARE MATERIALISED, given three cheaper-looking alternatives:
+
+  * `series_end` in the yaml CAN pin the context, but only at 1024.
+    `series_trim` sets ``min_len = |offset| + prediction_length = 2H``, so an
+    entry trimmed to ``C + H`` survives only while ``C + H >= 2H``, i.e.
+    ``C >= H``. At C = 1024 that holds for the whole sweep and would cost
+    nothing; at C = 512 it drops every series at H > 512. The context has to be
+    512 for the reason below, so this route is closed by the value, not by the
+    mechanism.
+  * capping the history in the forecaster instead (the shape `time_bench.py`
+    uses via `max_context`) would fix what the MODEL sees but not the MASE
+    scale, which `gluonts_split` computes from the whole past segment. That
+    denominator would still be ``2048 - H`` and still vary down the H axis,
+    reintroducing the confound the fixed context exists to remove.
+  * the general fix is a scalar `context_length` field on a benchmark entry,
+    instead of the per-item `series_end` dict. That lives in tsm-trainer's
+    evaluator, which this experiment imports and must not modify.
+
+Distinct directory names then come for free, which the collision would
+otherwise have needed on its own: the evaluator names a result row after the
+dataset, so four horizons over one name would produce four indistinguishable
+rows.
 
 WHY 512 STEPS OF CONTEXT
 An oracle that grid-searches the oscillator period on the context and
@@ -53,6 +72,11 @@ extrapolates reaches horizon R^2 of 0.96 / 0.96 / 0.95 / 0.85 at H = 16 / 64 /
 steps (negative = worse than predicting the mean, because a frequency error
 estimated from a short context accumulates linearly into a phase error). 512 is
 the shortest context at which all four horizons are measurable at all.
+
+It is also the reason the views are materialised rather than expressed as
+`series_end` entries, which would pin the context at 1024: by 1024 steps the
+same oracle is near 0.96 at every horizon, so the difficulty gradient across H
+— the thing the horizon axis exists to measure — would be flattened away.
 
 Usage
 -----
@@ -82,13 +106,21 @@ logger = logging.getLogger("finar_exp001_eval")
 DEFAULT_REPO = Path("/group-volume/workspace/mun-hak.lee/experiments/"
                     "tsm-trainer_001/tsm-trainer")
 
-#: The evaluation protocol. These are properties of the SWEEP, not of a run:
-#: the anchor is derived from the longest horizon so that selecting a subset of
-#: horizons leaves every context window exactly where it was.
-HORIZONS = (16, 64, 256, 1024)
-CONTEXT = 512
-SERIES_LENGTH = 2048
-ANCHOR = SERIES_LENGTH - max(HORIZONS)      # 1024: where every horizon starts
+#: The evaluation protocol, IMPORTED from the module that builds the corpus
+#: rather than restated here. `build_dataset.py` sizes the series for this
+#: sweep, so a `--length` or a fourth horizon that moved only one of the two
+#: copies would leave this file slicing a valid corpus at the wrong offsets —
+#: with no error, since every view would still be well formed.
+from build_dataset import (  # noqa: E402  (a sibling module, same directory)
+    EVAL_CONTEXT as CONTEXT,
+    EVAL_HORIZONS as HORIZONS,
+    SERIES_LENGTH,
+    target_features,
+)
+
+#: Where every horizon starts. Derived from the LONGEST horizon, so selecting a
+#: subset with `--horizons` leaves each context window exactly where it was.
+ANCHOR = SERIES_LENGTH - max(HORIZONS)
 
 
 def add_repo_to_path(repo: Path) -> None:
@@ -123,8 +155,8 @@ def view_name(shard: str, context: int, H: int) -> str:
 
 
 def make_views(data_root: Path, views_root: Path, shards: list[str],
-               context: int, horizons, force: bool = False
-               ) -> list[tuple[str, int]]:
+               context: int, horizons, force: bool = False,
+               anchor: int = ANCHOR) -> list[tuple[str, int]]:
     """Materialise ``context + H`` slices of every shard, one per horizon.
 
     Returns the ``[(view name, H)]`` the yaml should list.
@@ -143,12 +175,15 @@ def make_views(data_root: Path, views_root: Path, shards: list[str],
     import datasets as hf
 
     views_root.mkdir(parents=True, exist_ok=True)
-    lo = ANCHOR - context
+    lo = anchor - context
     if lo < 0:
+        # `anchor`, not `max(horizons)`: the anchor is set by the LONGEST
+        # horizon of the sweep, so quoting the selected subset here would
+        # describe a relationship that does not hold under `--horizons`.
         raise SystemExit(
             f"--context {context} does not fit before the horizon anchor at "
-            f"{ANCHOR}; the longest horizon needs {max(horizons)} steps of the "
-            f"{SERIES_LENGTH}-step series")
+            f"{anchor}, which leaves {SERIES_LENGTH - anchor} steps for the "
+            f"longest horizon of the sweep")
     made = []
     for shard in shards:
         src = None
@@ -161,13 +196,18 @@ def make_views(data_root: Path, views_root: Path, shards: list[str],
             if src is None:
                 ds = hf.load_from_disk(str(data_root / shard))
                 src = ds["train"] if hasattr(ds, "keys") else ds
-                tgt = np.asarray(src["target"], dtype=np.float32)
+                # `with_format("numpy")` decodes arrow in C. Reading the column
+                # in the default format materialises 2.1M Python floats per
+                # shard — 67 MB of objects, 216 times — to build an array that
+                # arrow can hand over directly.
+                tgt = np.asarray(src.with_format("numpy")["target"],
+                                 dtype=np.float32)
                 cols = {c: src[c] for c in ("item_id", "start", "freq")
                         if c in src.column_names}
-            cut = tgt[..., lo:ANCHOR + H]
+            cut = tgt[..., lo:anchor + H]
             hf.DatasetDict({"train": hf.Dataset.from_dict(
-                {**cols, "target": [x.tolist() for x in cut]})}
-            ).save_to_disk(str(dest))
+                {**cols, "target": [x.tolist() for x in cut]},
+                features=target_features())}).save_to_disk(str(dest))
     logger.info("views: %d slices of %d shards under %s (context %d, "
                 "window [%d, %d) + horizon)",
                 len(made), len(shards), views_root, context, lo, ANCHOR)

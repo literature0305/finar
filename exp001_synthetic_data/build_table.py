@@ -64,16 +64,25 @@ logger = logging.getLogger("finar_exp001_table")
 
 _REPEAT_RE = re.compile(r"^repeat(\d+)_(MASE|WQL)$")
 
+#: The level names, IMPORTED from the module that generates the corpora. A
+#: level added there but not here would be scored, written to the csv, and then
+#: dropped from every printed table without a warning.
+from build_dataset import (  # noqa: E402  (a sibling module, same directory)
+    GROUP_SIZES, PHI_LEVELS as _PHI, SHUFFLE_LEVELS as _SHUF, cell_name,
+)
+
+PHI_LEVELS = tuple(_PHI)
+SHUFFLE_LEVELS = tuple(_SHUF)
+GROUP_LEVELS = tuple(GROUP_SIZES)
+
 #: A dataset name as `run_eval.py` writes it: the cell, the shard that gives a
 #: dispersion statistic its denominator, and the view suffix that carries the
-#: evaluation protocol (context and horizon).
+#: evaluation protocol (context and horizon). BUILT from the level tuples above
+#: so the grammar cannot fall out of step with them — a stale alternation would
+#: not raise, it would silently drop rows into the "unrecognised" warning.
 _CELL_RE = re.compile(
-    r"^phi(low|mid|high)_sh(none|half|all)_gp(full|half|no)"
-    r"(?:_s(\d+))?(?:_c(\d+)h(\d+))?$")
-
-PHI_LEVELS = ("low", "mid", "high")
-SHUFFLE_LEVELS = ("none", "half", "all")
-GROUP_LEVELS = ("full", "half", "no")
+    rf"^phi({'|'.join(PHI_LEVELS)})_sh({'|'.join(SHUFFLE_LEVELS)})"
+    rf"_gp({'|'.join(GROUP_LEVELS)})(?:_s(\d+))?(?:_c(\d+)h(\d+))?$")
 
 #: Which axis each table varies, and which one it holds fixed.
 AXES = {"shuffle": ("shuf", SHUFFLE_LEVELS, "group"),
@@ -101,10 +110,8 @@ def parse_cell(name: str):
     if m is None:
         return None
     return {"phi": m.group(1), "shuf": m.group(2), "group": m.group(3),
-            "shard": m.group(4),
             "context": int(m.group(5)) if m.group(5) else None,
-            "H": int(m.group(6)) if m.group(6) else None,
-            "diag_key": f"phi{m.group(1)}_sh{m.group(2)}_gp{m.group(3)}"}
+            "H": int(m.group(6)) if m.group(6) else None}
 
 
 def win_rate(lo: np.ndarray, hi: np.ndarray) -> tuple[float, int]:
@@ -154,13 +161,16 @@ def build(df: pd.DataFrame, diag: dict, lo: int, hi: int) -> pd.DataFrame:
                        len(unknown), list(unknown)[:3])
     df = df[parts.notna()].copy()
     parts = parts[parts.notna()]
-    for k in ("phi", "shuf", "group", "context", "H", "diag_key"):
+    for k in ("phi", "shuf", "group", "context", "H"):
         df["_" + k] = [p[k] for p in parts]
 
     rows = []
-    keys = ["_phi", "_shuf", "_group", "_H", "_context", "_diag_key"]
-    for (phi, shuf, group, H, ctx, dkey), grp in df.groupby(keys, dropna=False):
-        d = diag.get("cells", {}).get(str(dkey), {})
+    keys = ["_phi", "_shuf", "_group", "_H", "_context"]
+    for (phi, shuf, group, H, ctx), grp in df.groupby(keys, dropna=False):
+        # `cell_name` rather than re-concatenating the regex groups: the
+        # generator owns this spelling and diagnostics.json is keyed by it.
+        dkey = cell_name(phi, shuf, group)
+        d = diag.get("cells", {}).get(dkey, {})
         row = {"cell": dkey, "H": H, "context": ctx,
                "phi": phi, "shuf": shuf, "group": group,
                "observed_corr": d.get("observed_corr_signed"),
@@ -207,10 +217,9 @@ def build(df: pd.DataFrame, diag: dict, lo: int, hi: int) -> pd.DataFrame:
 
     if not rows:
         return pd.DataFrame()
-    o_phi = {lv: i for i, lv in enumerate(PHI_LEVELS)}
-    o_sh = {lv: i for i, lv in enumerate(SHUFFLE_LEVELS)}
-    o_gp = {lv: i for i, lv in enumerate(GROUP_LEVELS)}
-    order = {"phi": o_phi, "shuf": o_sh, "group": o_gp}
+    order = {col: {lv: i for i, lv in enumerate(levels)}
+             for col, levels in (("phi", PHI_LEVELS), ("shuf", SHUFFLE_LEVELS),
+                                 ("group", GROUP_LEVELS))}
     return (pd.DataFrame(rows)
             .sort_values(["H", "phi", "shuf", "group"],
                          key=lambda s: s.map(order[s.name])
@@ -218,96 +227,84 @@ def build(df: pd.DataFrame, diag: dict, lo: int, hi: int) -> pd.DataFrame:
             .reset_index(drop=True))
 
 
-def _corr_legend(t: pd.DataFrame, axis: str, levels, fixed: str,
-                 at: str) -> str:
+def _corr_legend(sub: pd.DataFrame, axis: str, levels) -> str:
     """The observed cross-variate correlation each column actually carries.
 
     Printed with the table because the column headings are level names, and a
-    level name is a claim about the data that the previous build got wrong by a
-    factor of ten. These numbers are measured on the saved series.
+    level name is a claim about the data. A RANGE over the phi rows, not one
+    row's value: the correlation a column carries depends on phi as well (the
+    factor is scaled by sqrt(phi)), so a single number would misdescribe two of
+    the three rows it sits above.
     """
-    sub = t[t[fixed] == at]
     out = []
     for lv in levels:
-        # A RANGE over the phi rows, not one row's value: the correlation this
-        # column carries depends on phi as well (the factor is scaled by
-        # sqrt(phi)), so quoting a single number would misdescribe two of the
-        # three rows it sits above.
         v = sub[sub[axis] == lv]["observed_corr"].dropna().unique()
         out.append(f"{lv}={min(v):+.2f}..{max(v):+.2f}" if len(v)
                    else f"{lv}=?")
     return "observed cross-variate corr (over the phi rows): " + "  ".join(out)
 
 
-def render(t: pd.DataFrame, table: str, at: str, lo: int, hi: int,
-           metric: str) -> str:
-    """One block per horizon: phi down the rows, the chosen axis across."""
+def _render_grid(t: pd.DataFrame, table: str, at: str, guard: str, title: str,
+                 rule: int, cell_w: int, fmt, footer: list[str]) -> str:
+    """One block per horizon: phi down the rows, the chosen axis across.
+
+    THE grid renderer. The iteration table and the baseline table differ only
+    in which column has to be present, how wide a cell is, and what goes in it;
+    everything else — the axis lookup, the per-horizon blocks, the header row,
+    the missing-cell dash, the correlation legend — was written twice and had
+    already started to drift apart within one commit.
+    """
     axis, levels, fixed = AXES[table]
-    a, b = f"iter{lo}_{metric}", f"iter{hi}_{metric}"
-    if a not in t.columns:
+    if guard not in t.columns:
         return ""
     sub = t[t[fixed] == at]
     if sub.empty:
         return ""
-    head = f"{metric}: iteration {lo} -> {hi}   [{table} axis, {fixed}={at}]"
-    out = [f"\n{'=' * 82}", head, "=" * 82]
+    out = [f"\n{'=' * rule}", f"{title}   [{table} axis, {fixed}={at}]",
+           "=" * rule]
     for H in sorted(sub["H"].dropna().unique()):
         blk = sub[sub["H"] == H]
         out.append(f"\nH = {int(H)}")
         out.append(f"  {'phi\\' + table:<12} "
-                   + "".join(f"{lv:>22}" for lv in levels))
+                   + "".join(f"{lv:>{cell_w}}" for lv in levels))
         for phi in PHI_LEVELS:
             cells = []
             for lv in levels:
                 r = blk[(blk["phi"] == phi) & (blk[axis] == lv)]
-                if r.empty or pd.isna(r.iloc[0][a]):
-                    cells.append(f"{'-':>22}")
-                    continue
-                r = r.iloc[0]
-                cells.append(f"{r[a]:>7.4f}->{r[b]:<7.4f}"
-                             f"{r.get(f'imp_pct_{metric}', np.nan):>+6.1f}%")
+                if r.empty or pd.isna(r.iloc[0][guard]):
+                    cells.append(f"{'-':>{cell_w}}")
+                else:
+                    cells.append(fmt(r.iloc[0]))
             out.append(f"  {phi:<12} " + "".join(cells))
-    out += ["", "cell = iter1 -> iter2, then the iteration-2 improvement "
+    return "\n".join(out + [""] + footer + [_corr_legend(sub, axis, levels)])
+
+
+def render(t: pd.DataFrame, table: str, at: str, lo: int, hi: int,
+           metric: str) -> str:
+    """The iteration comparison: iter1 -> iter2 and what the second pass bought."""
+    a, b = f"iter{lo}_{metric}", f"iter{hi}_{metric}"
+    return _render_grid(
+        t, table, at, guard=a, rule=82, cell_w=22,
+        title=f"{metric}: iteration {lo} -> {hi}",
+        fmt=lambda r: (f"{r[a]:>7.4f}->{r[b]:<7.4f}"
+                       f"{r.get(f'imp_pct_{metric}', np.nan):>+6.1f}%"),
+        footer=["cell = iter1 -> iter2, then the iteration-2 improvement "
                 "(mean over shards).",
-            _corr_legend(sub, axis, levels, fixed, at),
-            "Improvement is a ratio and may be read across cells; the raw "
-            "levels may not —",
-            "cells differ in how much of the series is predictable at all. "
-            "Per-shard spread",
-            "and win rate are in the csv."]
-    return "\n".join(out)
+                "Improvement is a ratio and may be read across cells; the raw "
+                "levels may not —",
+                "cells differ in how much of the series is predictable at all. "
+                "Per-shard spread",
+                "and win rate are in the csv."])
 
 
 def render_baseline(t: pd.DataFrame, table: str, at: str, metric: str) -> str:
     """The grid for a model with no iteration axis: one value per cell."""
-    axis, levels, fixed = AXES[table]
-    if metric not in t.columns:
-        return ""
-    sub = t[t[fixed] == at]
-    if sub.empty:
-        return ""
-    out = [f"\n{'=' * 64}",
-           f"{metric} (no iteration axis)   [{table} axis, {fixed}={at}]",
-           "=" * 64]
-    for H in sorted(sub["H"].dropna().unique()):
-        blk = sub[sub["H"] == H]
-        out.append(f"\nH = {int(H)}")
-        out.append(f"  {'phi\\' + table:<12} "
-                   + "".join(f"{lv:>15}" for lv in levels))
-        for phi in PHI_LEVELS:
-            cells = []
-            for lv in levels:
-                r = blk[(blk["phi"] == phi) & (blk[axis] == lv)]
-                if r.empty or pd.isna(r.iloc[0].get(metric)):
-                    cells.append(f"{'-':>15}")
-                    continue
-                r = r.iloc[0]
-                cells.append(f"{r[metric]:>9.4f}"
-                             f"±{r.get(f'{metric}_sd', np.nan):<5.3f}")
-            out.append(f"  {phi:<12} " + "".join(cells))
-    out += ["", _corr_legend(sub, axis, levels, fixed, at),
-            "mean over shards ± sd across shards."]
-    return "\n".join(out)
+    return _render_grid(
+        t, table, at, guard=metric, rule=64, cell_w=15,
+        title=f"{metric} (no iteration axis)",
+        fmt=lambda r: (f"{r[metric]:>9.4f}"
+                       f"±{r.get(f'{metric}_sd', np.nan):<5.3f}"),
+        footer=["mean over shards ± sd across shards."])
 
 
 def main() -> int:

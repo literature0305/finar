@@ -134,7 +134,10 @@ while [[ $# -gt 0 ]]; do
         --force-data) FORCE_DATA=1;    shift ;;
         --repo)       REPO="$2";       shift 2 ;;
         --dry-run)    DRY="echo [dry]"; shift ;;
-        -h|--help)    sed -n '2,90p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        # To the end of the header block, not to a hard-coded line number:
+        # the header IS the documentation, and a fixed range silently starts
+        # truncating it the moment it grows.
+        -h|--help)    sed -n '2,${/^set -/q;p;}' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
