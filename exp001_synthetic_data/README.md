@@ -2,177 +2,156 @@
 
 This appendix documents the construction of the synthetic corpora used to test
 whether iterative refinement supplies an inductive bias for dependency *within*
-the forecast target. It is written to be dropped into a paper appendix; every
-number quoted is reproduced by `python build_dataset.py --dry-run`.
+the forecast target. Every number quoted is reproduced by
+`python build_dataset.py --dry-run`.
 
 ## A.1 Design
 
-We construct a $3 \times 3 \times 5$ grid of corpora over three axes:
+We construct a $3 \times 3 \times 3$ grid of corpora over three factors of
+variation, giving 27 cells:
 
-| Axis | Symbol | Levels | Meaning |
-|---|---|---|---|
-| Cross-horizon dependency | $\phi$ | 0.0 / 0.5 / 0.9 | variance share of the horizon carried by a persistent latent factor |
-| Cross-variate dependency | $\rho$ | 0.0 / 0.5 / 0.9 | correlation between two variates' factor components |
-| Horizon length | $H$ | 16 / 128 / 256 / 512 / 1024 | forecast length |
+| Axis | Levels | Meaning |
+|---|---|---|
+| $\phi$ | 0.3 / 0.6 / 0.9 | dependency **along time**: the variance share of the series carried by the context-determined factor |
+| shuffle | none / half / all | dependency **across variates**, removed by re-pairing variates across items |
+| group | 4 / 2 / 1 | dependency **across variates**, removed by shrinking the group that shares a latent bank |
 
-giving 45 corpora. Each holds $N = 2048$ items of $V = 8$ variates over
-$C = 2048$ context steps followed by $H$ horizon steps.
+Each cell holds $N = 2048$ items of $V = 4$ variates over $T = 2048$ steps,
+written as 8 equal shards so that every reported statistic has a dispersion
+estimate. The forecast horizon is not an axis of the corpus: it is an
+evaluation-time slice (A.4).
+
+$\phi$ is the share of the observation that is predictable in principle; the
+complementary share is white noise. The two cross-variate axes are two
+independent mechanisms for lowering the same quantity, so they cross-check each
+other — `all` shuffle and `no` group reach zero correlation by different routes
+and must agree.
 
 ## A.2 Generative process
 
-For item $i$ and variate $c$, with $t = 0, \dots, C + H - 1$:
+For a group $G$ of variates, with $M_s = 4$ shared oscillators and one private
+oscillator per variate:
 
 $$
 \begin{aligned}
-z(t) &= R^{t} z(0), \qquad R = \mathrm{blockdiag}\big(\mathrm{rot}(\theta_1), \dots, \mathrm{rot}(\theta_M)\big) \\
-s(t) &= B\, z(t) \\
-c(t) &= (1-\kappa)\, s(t) + \kappa\, g\big(s(t - L)\big) \\
-e(t) &= \sqrt{\phi}\, c(t) + \sqrt{1-\phi}\, \xi(t), \qquad \xi(t) \sim \mathcal{N}(0, I) \\
-Y(t) &= m(t) + \sigma\, e(t)
+u(t)   &\quad \text{shared bank; every variate of } G \text{ sees the same } u \\
+v_c(t) &\quad \text{one private oscillator per variate} \\
+s_c(t) &= \sqrt{1-\beta}\, v_c(t) + \sqrt{\beta}\, \langle w, u(t)\rangle
+          &&\text{(linear coregionalization [1])} \\
+x_c(t) &= (1-\kappa)\, s_c(t) + \kappa\, g_c\big(s(t - L)\big)
+          &&\text{(causal DAG over channels [2], lead-lag } L) \\
+Y_c(t) &= \sqrt{\phi}\, x_c(t) + \sqrt{1-\phi}\, \xi_c(t),
+          \qquad \xi \sim \mathcal{N}(0, I)
 \end{aligned}
 $$
 
-with $m$ a per-variate sum of three sinusoids (periods 24 / 96 / 168, random
-phase and amplitude), $\sigma = 0.5$, $M = V + 4 = 12$ oscillators with periods
-drawn uniformly from $[40, 600]$ steps, $\kappa = 0.3$ and $L = 3$.
+with $\beta = 0.8$, $\kappa = 0.3$, $L = 3$ and max-parents $P_{\max} = 2$.
+Activations are drawn from $\{\tanh, \sin, \mathrm{softsign}\}$, all
+zero-preserving and 1-Lipschitz, so the nonlinear term neither injects a level
+shift nor turns $\kappa$ from a share into a gain.
 
-$z$ is a bank of **undamped** oscillators, so it is deterministic given
-$z(0)$ and $z(C+k) = R^{k+1} z(C-1)$: the horizon is determined by where the
-context left off, and that determination does not decay with $k$.
+$Y$ is the whole observation; nothing is added on top of it, so the structured
+component carries the entire variance and the designed correlation is the
+correlation of the series that is written.
 
-**The oracle.** Because $c$ is deterministic given the context and $\xi$ is
-white, $\mathbb{E}[Y(C+k) \mid X] = m(C+k) + \sigma \sqrt{\phi}\, c(C+k)$, so the
-irreducible per-step MSE is exactly
+$\beta$ is fixed rather than swept: the cross-variate axes are `shuffle` and
+`group`, and a third route to the same quantity would confound them. $w$ is
+drawn once per group and unit-normalised, so the shared component enters every
+variate of a group with the same sign.
 
-$$\mathrm{MSE}^\star = \sigma^2 (1 - \phi)$$
+**Periods.** Each oscillator draws its period per item from
+$\{16, 32, 64, 128, 256, 512, 1024\}$, so an item mixes fast and slow structure
+and the context sees a different number of cycles for each. Oscillators are
+written closed-form as sinusoids rather than by iterating a rotation matrix: the
+two are the same object, and the closed form does not accumulate 2048 steps of
+floating-point drift that a model could read as a trend.
 
-at every horizon: 0.250 / 0.125 / 0.025 for $\phi \in \{0, 0.5, 0.9\}$.
+## A.3 The two cross-variate mechanisms
 
-## A.3 Why undamped oscillators rather than a contractive VAR
+**Shuffle** re-pairs which variate-series sit inside one item, as a permutation.
+The three shuffle levels of a $(\phi, \text{group})$ cell are derived from the
+*same* generated array, so every variate's marginal law is not merely equal in
+distribution but literally the same set of series. A difference between shuffle
+levels therefore cannot come from the marginal problem getting easier or harder;
+only the joint structure changes. `half` re-pairs half the **items**, which
+leaves half the variate pairs intact — with $V = 4$ there are six pairs, and
+shuffling two of four *variates* would instead leave only one.
 
-The natural way to write "cross-horizon dependency" is a stable VAR,
-$e(t) = \Phi e(t-1) + \eta(t)$ with $\|\Phi\| = \phi < 1$. We built that first
-and discarded it. For a contractive AR, the share of the horizon residual that
-the context seam can explain is bounded by $\frac{1}{H}\sum_{k<H} \phi^{2(k+1)}$:
+**Group** sets how many variates share a latent bank: 4 (one group), 2 (two
+groups) or 1 (four groups, i.e. univariate structure delivered in a multivariate
+container). The causal DAG edges never cross a group boundary, so that this axis
+closes every cross-variate pathway rather than all but one.
 
-| $\phi$ | $H{=}16$ | $H{=}128$ | $H{=}1024$ |
-|---|---|---|---|
-| 0.85 | 0.162 | 0.020 | 0.003 |
-| 0.98 | 0.722 | 0.188 | 0.024 |
-| 0.999 | 0.983 | 0.881 | 0.425 |
+## A.4 Evaluation protocol
 
-At $H = 1024$ the cross-horizon axis has almost nothing left to separate, even
-at $\phi = 0.999$ — the horizon length would silently destroy the very
-dependency the grid varies. A rotation satisfies $\|R^k v\| = \|v\|$ for all
-$k$, so the explained share is set by $\phi$ alone and is independent of $H$,
-which is what makes the horizon a clean third axis instead of a confound.
+The corpus is built once at $T = 2048$. A horizon
+$H \in \{16, 64, 256, 1024\}$ is a **view**,
+`target[..., anchor - C : anchor + H]`, with the anchor fixed at
+$2048 - 1024 = 1024$ and the context $C = 512$ by default. Two properties
+follow: a trend down the $H$ axis compares one corpus with itself rather than
+four independent draws, and every horizon is scored on the identical context
+window.
 
-The refinement mechanism survives the change and is sharpened by it. Computing
-$\mathbb{E}[Y(C+k) \mid X]$ still requires composing the rotation $k$ times, so a
-single forward pass must emit $H$ phase-advanced outputs jointly, whereas a
-second pass given a plug-in estimate of $Y(C+k-1)$ needs one further rotation.
-The difficulty of the one-pass problem therefore grows with $H$.
+Fixing the context matters because the evaluator's context is otherwise
+everything before the split, i.e. $2048 - H$, which would shrink by a factor of
+64 across this sweep and vary horizon length and context length together.
 
-## A.4 Cross-variate structure: three composed mechanisms
+**Why 512 steps.** An oracle that grid-searches the oscillator period on the
+context and extrapolates reaches, in horizon $R^2$:
 
-Using a single mechanism would make the result a statement about that
-mechanism, so $\rho$ acts through three, composed:
+| context | $H{=}16$ | $H{=}64$ | $H{=}256$ | $H{=}1024$ |
+|---|---|---|---|---|
+| 64 | 0.96 | 0.83 | −7.2 | −944 |
+| 128 | 0.98 | 0.96 | 0.25 | −40.6 |
+| 256 | 0.97 | 0.97 | 0.92 | 0.44 |
+| 512 | 0.96 | 0.96 | 0.95 | 0.85 |
 
-1. **Linear coregionalization**, after TimePFN's LMC-Synth [1], which draws
-   latent GPs and mixes them into channels, $f_d(t) = \sum_q a_{d,q} u_q(t)$
-   with cross-covariance $B_q = A_q A_q^{\top}$. Here $B$ gives variate $c$ a
-   loading $\sqrt{1-\rho}$ on a private oscillator and $\sqrt{\rho}$ on a bank
-   shared by all variates, so $\operatorname{Var}(s_c) = 1$ and
-   $\operatorname{Cov}(s_c, s_{c'}) = \rho$.
-2. **Structural causal edges**, after CauKer [2], which lays a random DAG over
-   channels and pushes roots through nonlinear activations with max-parents
-   $P_{\max}$ as the density knob. $g$ is a sparse DAG ($P_{\max} = 2$) whose
-   edges apply a 1-Lipschitz, zero-preserving activation drawn from
-   $\{\tanh, \sin, \mathrm{softsign}\}$. Without it every cell is
-   linear-Gaussian and the experiment measures linearity, not refinement.
-3. **Lead-lag coupling**, after the multivariatizer's `_mv_lead_lag` /
-   `_mv_var`. DAG edges act at lag $L = 3$, so a variate's future depends on
-   another variate's future *at a different time* — the case a single forward
-   pass cannot resolve within one column.
+A negative $R^2$ is worse than predicting the mean: a frequency error estimated
+from a short context accumulates linearly into a phase error, and by $H = 256$
+the extrapolation is anti-phase. 512 is the shortest context at which all four
+horizons are measurable and a difficulty gradient across $H$ still survives.
 
-**Calibration.** The nominal loading does not survive the DAG, which is itself
-a cross-variate mechanism: it both dilutes a requested correlation and
-contributes one of its own. Measured against nominal, uncalibrated:
-$\rho = 0.0 \mapsto -0.035$, $0.5 \mapsto 0.384$, $0.9 \mapsto 0.847$. Reporting
-those as $\{0, 0.5, 0.9\}$ would put a number in the paper the data does not
-have, and the middle cell would sit nearer 0.4 than the midpoint it marks. We
-therefore bisect on the loading until the *generated* correlation matches the
-target, achieving 0.003 / 0.503 / 0.901 at $H{=}16$ and 0.004 / 0.499 / 0.897 at
-$H{=}1024$. The achieved value is recorded per cell in `diagnostics.json`.
+## A.5 Verification
 
-## A.5 What is and is not held fixed
+Diagnostics are measured on the series that is written, not on the latent
+components. Observed cross-variate correlation, averaged over variate pairs, at
+$N = 2048$:
 
-**Held within a horizon.** The backbone $m$, the noise scale $\sigma$, the
-oscillator bank, the item count, and the total marginal variance of $Y$
-(2.06–2.15 across all 45 cells).
+| $\phi$ | shuffle none | half | all | | group 4 | 2 | 1 |
+|---|---|---|---|---|---|---|---|
+| 0.3 | +0.201 | +0.112 | +0.004 | | +0.201 | +0.069 | +0.000 |
+| 0.6 | +0.387 | +0.188 | +0.010 | | +0.387 | +0.144 | −0.005 |
+| 0.9 | +0.646 | +0.353 | +0.001 | | +0.646 | +0.241 | −0.005 |
 
-**Not held across horizons.** The per-horizon generator is seeded $\texttt{seed}+H$,
-so the five horizons draw independent contexts from the same law rather than
-sharing one (context SHA-256 of $H{=}16/128/1024$: `b6ac7ee4`, `a161c74b`,
-`bd9986d4`). A MASE denominator is therefore equal across horizons only in
-expectation, and reading one $\phi$ level down the $H$ axis is a distributional
-rather than an exact comparison. The shard-to-shard standard deviation is
-0.002–0.008 MASE, which bounds how much of any $H$ trend this can explain.
+(shuffle at group = 4; group at shuffle = none, so the two share their first
+column.) The shuffle ladder is $\{1, \tfrac12, 0\}$ and the group ladder is
+$\{1, \tfrac13, 0\}$ of the intact value, as the mechanisms predict, and the two
+agree at zero. The measured variance share is 0.298 / 0.602 / 0.900 against
+targets of 0.3 / 0.6 / 0.9.
 
-**Not held.** The context differs across the nine $(\phi, \rho)$ cells, and it
-must: the factor has to be identifiable from the context or there is nothing
-for any forecaster to infer, and a factor visible in the context necessarily
-changes it.
+The two axes are not orthogonal in the observed correlation and cannot be:
+correlation is carried by the structured component and the complementary noise
+is independent per variate, so $\phi$ sets the ceiling
+($\operatorname{corr} \approx 0.72\,\phi$ at group 4) and the cross-variate axes
+lower the correlation from it. Comparisons of a cross-variate effect are
+therefore read **within** a $\phi$ row.
 
-This is the opposite of the choice made by the cross-horizon benchmark of the
-companion FIRE experiment, which holds the context byte-identical and varies
-only the future noise law. That design has a property its own documentation
-records: with $\mathbb{E}[Y \mid X]$ equal across regimes, the expected iteration-$k$
-gain is regime-invariant, so a raw absolute-gain difference between regimes is
-finite-sample noise. Such a design cannot test a plug-in mechanism. Ours can, at
-the price that cells differ in difficulty — which is why the reported
-cross-cell statistic is excess risk over the per-cell oracle,
+`diagnostics.json` also records, per cell, the horizon $R^2$ of a ridge
+predicting a channel from its own context versus from every channel's context.
+At $\phi = 0.9$ and group 4 the gain is $-0.005 / -0.011 / -0.012$ across
+shuffle none / half / all: it orders with the correlation but is approximately
+zero, because a channel's own 512-step history already identifies its own signal.
+Cross-variate information in these corpora is redundant rather than necessary,
+and the number is recorded so that a flat result can be read against it.
 
-$$\text{closed} = \frac{(\mathrm{MSE}_1 - \mathrm{MSE}^\star) - (\mathrm{MSE}_2 - \mathrm{MSE}^\star)}{\mathrm{MSE}_1 - \mathrm{MSE}^\star},$$
-
-a share of the *removable* error. Raw MASE may be read down a column but never
-across one.
-
-## A.6 Verification
-
-`build_dataset.py --dry-run` reports, per cell, the analytic oracle, the
-measured explained share and the measured cross-variate correlation. At
-$N = 256$:
-
-| | measured explained ($\phi$) | measured corr ($\rho$) |
-|---|---|---|
-| target 0.0 / 0.5 / 0.9 | 0.000 / 0.502 / 0.901 ($H{=}16$) | 0.003 / 0.503 / 0.901 |
-| target 0.0 / 0.5 / 0.9 | 0.000 / 0.499 / 0.899 ($H{=}1024$) | 0.004 / 0.499 / 0.897 |
-
-The explained share is identical at $H{=}16$ and $H{=}1024$, confirming the
-horizon axis is orthogonal to the dependency axes.
-
-Two defects found and fixed during construction are recorded here because they
-would each have produced a plausible-looking but wrong grid:
-
-- An earlier version added the nonlinear DAG term *beside* the AR term rather
-  than inside the contraction, giving loop gain $\phi(1+\kappa) > 1$. Horizon
-  variance diverged to 648 at $(\phi{=}0.98, \rho{=}0)$ against ~3.1 at the same
-  $\phi$ with $\rho > 0$, because raising $\rho$ lowered $V-1$ of $\Phi$'s
-  eigenvalues and quietly damped the blow-up. The instability therefore tracked
-  the *other* axis.
-- Cell seeds were derived from `hash((str, str))`, which Python salts per
-  interpreter unless `PYTHONHASHSEED` is pinned, so the corpus would have been
-  different on every rebuild. Seeds are now positional.
-
-## A.7 Files
+## A.6 Files
 
 | File | Purpose |
 |---|---|
-| `build_dataset.py` | builds the 45 corpora, `metadata.json`, `diagnostics.json`, `viz/` |
-| `run_eval.py` | scores one model at every recursion depth; imports tsm-trainer, never modifies it |
+| `build_dataset.py` | builds the 27 corpora, `metadata.json`, `diagnostics.json`, `viz/` |
+| `run_eval.py` | materialises the context+$H$ views and scores one model at every recursion depth; imports tsm-trainer, never modifies it |
 | `run_exp001.sh` | end-to-end driver, with the remote-ssh usage in its header |
-| `build_table.py` | iteration-1 vs iteration-2 tables: MASE, WQL, win rate, excess risk |
+| `build_table.py` | the two tables: iteration 1 vs 2, improvement, win rate |
 
 Evaluation imports `Evaluator.evaluate_benchmark(config_path=...)` directly
 rather than going through `run_evaluation.sh`, because `run_benchmark.py`

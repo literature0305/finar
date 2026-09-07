@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# FiNAR Experiment 1 — build the 3x3x5 grid, score it, and table the result.
+# FiNAR Experiment 1 — build the 3x3x3 grid, score it, and table the result.
 # ===========================================================================
 # Tests the FiNAR hypothesis that iterative refinement supplies an inductive
-# bias for dependency INSIDE the forecast target, by sweeping three axes:
+# bias for dependency INSIDE the forecast target, over three axes:
 #
-#     cross-horizon dependency   phi in {low, mid, high}
-#     cross-variate dependency   rho in {low, mid, high}
-#     horizon length             H   in {16, 128, 256, 512, 1024}
+#     dependency along time      phi   in {low 0.3, mid 0.6, high 0.9}
+#     cross-variate, by re-pairing variates across items
+#                                shuf  in {none, half, all}
+#     cross-variate, by shrinking the group that shares a latent bank
+#                                group in {full 4, half 2, no 1}
 #
-# 9 dependency cells x 5 horizons = 45 corpora, each scored at every recursion
-# depth so iteration 1 and iteration 2 can be compared per cell.
+# 27 cells, ONE length (2048). The horizon is an EVALUATION-TIME SLICE, not a
+# corpus: H in {16, 64, 256, 1024} are views of the same data, all scored on
+# the same 512-step context window. The previous build generated a separate
+# corpus per horizon, so a trend down the H axis compared different draws.
+#
+# Two tables come out, one per cross-variate axis; they must agree where both
+# reach zero correlation (`all` shuffle and `no` group), which is the design's
+# own consistency check.
 #
 # ---------------------------------------------------------------------------
 # USAGE — ON THE REMOTE A100, OVER SSH (not as a submitted job)
@@ -48,15 +56,23 @@
 #                                 and are warned about, not refused.
 #   --shallow                     score a model with no iteration axis
 #                                 (Chronos-2, or a K=1 EO) as a baseline
-#   --horizons "16 128"           subset of the grid
+#   --horizons "16 64"            subset of the horizon sweep
+#   --context N                   observed steps before every horizon
+#                                 (default: 512). Held EQUAL across horizons.
+#                                 512 is the shortest context at which all four
+#                                 horizons are measurable at all — from 64 an
+#                                 oracle that grid-searches the period scores
+#                                 R^2 = -7 at H=256 and -944 at H=1024, i.e.
+#                                 worse than predicting the mean.
 #   --data-root PATH              corpora location
 #                                 (default: /group-volume/ts-dataset/finar_exp001)
 #   --out PATH                    results dir (default: ./results/<model name>)
 #   --num-series N                items per cell (default: 2048)
-#   --shards N                    sibling corpora per cell (default: 16). This
-#                                 is the win rate's denominator: the evaluator
-#                                 emits one row per dataset, so an unsharded
-#                                 cell gives n=1 and no rate at all.
+#   --shards N                    sibling corpora per cell (default: 8). This
+#                                 is the denominator of every dispersion
+#                                 statistic: the evaluator emits one row per
+#                                 dataset, so an unsharded cell gives n=1 and
+#                                 an improvement with no spread beside it.
 #   --force-data                  rebuild the corpora even if they exist.
 #                                 Without it --stage all SKIPS generation when
 #                                 <data-root>/metadata.json is present.
@@ -98,7 +114,8 @@ SHALLOW=""
 HORIZONS=""
 OUT=""
 NUM_SERIES=2048
-SHARDS=16
+SHARDS=8
+CONTEXT=512
 FORCE_DATA=""
 DRY=""
 
@@ -109,6 +126,7 @@ while [[ $# -gt 0 ]]; do
         --depth)      DEPTH="$2";      shift 2 ;;
         --shallow)    SHALLOW="--allow-shallow"; shift ;;
         --horizons)   HORIZONS="$2";   shift 2 ;;
+        --context)    CONTEXT="$2";    shift 2 ;;
         --data-root)  DATA_ROOT="$2";  shift 2 ;;
         --out)        OUT="$2";        shift 2 ;;
         --num-series) NUM_SERIES="$2"; shift 2 ;;
@@ -138,14 +156,30 @@ if [[ "${STAGE}" == "data" || "${STAGE}" == "all" ]]; then
     # --stage all is the normal way to run this, and rebuilding 14 GB every
     # time would also RESEED the corpora, so a re-run would score different
     # data than the run before it. `--stage data --force-data` rebuilds.
-    if [[ -f "${DATA_ROOT}/metadata.json" && -z "${FORCE_DATA}" ]]; then
-        note "SKIP data: ${DATA_ROOT}/metadata.json exists "
-        note "     ($(ls -d ${DATA_ROOT}/H*_phi*_rho* 2>/dev/null | wc -l) corpora). --force-data to rebuild."
+    # `|| true` inside the substitution: this script runs under `set -o
+    # pipefail`, so a bare `ls` that matches nothing exits 2 and takes the
+    # whole run down before it can report that there is nothing to skip.
+    N_CELLS=$({ ls -d ${DATA_ROOT}/phi*_sh*_gp*_s* 2>/dev/null || true; } | wc -l)
+    N_STALE=$({ ls -d ${DATA_ROOT}/H*_phi*_rho* 2>/dev/null || true; } | wc -l)
+    # Counts the CORPORA, not metadata.json: the previous grid wrote its own
+    # metadata.json under this same root with a completely different cell
+    # naming, so keying the skip on that file would skip a build that has not
+    # happened and then score 0 cells.
+    if [[ "${N_STALE}" -gt 0 ]]; then
+        note "WARNING: ${DATA_ROOT} holds ${N_STALE} corpora from the previous"
+        note "         H*_phi*_rho* grid. They are not read by this pipeline"
+        note "         and are not comparable to it; remove them when you are"
+        note "         done with the old results."
+    fi
+    if [[ "${N_CELLS}" -gt 0 && -z "${FORCE_DATA}" ]]; then
+        note "SKIP data: ${N_CELLS} corpora already under ${DATA_ROOT}."
+        note "     --force-data to rebuild (which RESEEDS: a rebuilt corpus is"
+        note "     not the one the existing results were scored on)."
     else
-    note "=== building the 45-cell grid -> ${DATA_ROOT}"
+    note "=== building the 27-cell grid -> ${DATA_ROOT}"
     ${DRY} "${PY}" "${HERE}/build_dataset.py" \
         --out-root "${DATA_ROOT}" --num-series "${NUM_SERIES}" \
-        --shards "${SHARDS}" ${HORIZONS:+--horizons ${HORIZONS}}
+        --shards "${SHARDS}"
     fi
 fi
 
@@ -154,7 +188,7 @@ if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     ${DRY} "${PY}" "${HERE}/run_eval.py" \
         --model-path "${CKPT}" --data-root "${DATA_ROOT}" \
         --out "${OUT}" --repo "${REPO}" --coe-eval-depth "${DEPTH}" \
-        ${SHALLOW} ${HORIZONS:+--horizons ${HORIZONS}}
+        --context "${CONTEXT}" ${SHALLOW} ${HORIZONS:+--horizons ${HORIZONS}}
 fi
 
 if [[ "${STAGE}" == "table" || "${STAGE}" == "all" ]]; then

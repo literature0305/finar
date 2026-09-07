@@ -1,163 +1,150 @@
 #!/usr/bin/env python3
-"""FiNAR Experiment 1 — a 3x3x5 grid of synthetic multivariate corpora.
+"""Build the FiNAR exp001 corpora: one length, two cross-variate axes.
 
-Builds 45 corpora over three axes:
-
-    cross-horizon dependency   phi in {low, mid, high}   share of the horizon
-                                                         carried by a persistent
-                                                         latent factor
-    cross-variate dependency   rho in {low, mid, high}   how much of that factor
-                                                         is SHARED across variates
-    horizon length             H   in {16, 128, 256, 512, 1024}
-
-so the FiNAR hypothesis — that iterative refinement supplies an inductive bias
-for dependency WITHIN the forecast target — can be read as a surface in
-(phi, rho, H) rather than a single number.
+exp001 asks whether iterative refinement buys more when the forecast target
+carries more dependency. The previous build answered the cross-horizon half and
+failed the cross-variate half, for reasons that are recorded here because they
+are what this file is shaped to avoid.
 
 =============================================================================
-THE GENERATIVE MODEL
+WHAT WENT WRONG BEFORE, AND WHAT CHANGED
 =============================================================================
-Each item i is V variates over C context steps and H horizon steps.
+1. THE CROSS-VARIATE KNOB NEVER REACHED THE DATA. The old build added an
+   independent per-variate seasonal backbone `m` on top of the structured
+   part, and `m` carried 86.7% of the observed variance. A nominal rho of 0.9
+   therefore appeared in the saved series as a correlation of 0.09, and the
+   diagnostics did not catch it because they measured the correlation of the
+   LATENT component, not of the series that was written. Measured on the
+   shipped corpus, rho=0.9 and rho=0.0 differ by 0.008 in mean |corr|.
 
-    latent      z(t)   = R^t z(0),   R = blockdiag(rot(theta_1..theta_M))
-    signal      s(t)   = B z(t)                    (V-vector, unit variance)
-    coupled     c(t)   = (1-kappa) s(t) + kappa g(s(t-L))
-    residual    e(t)   = sqrt(phi) c(t) + sqrt(1-phi) xi(t)
-    observed    Y(t)   = m(t) + sigma e(t)          over 0 .. C+H-1
+   -> There is no backbone. The generator's output IS the observed series, so
+      the structured part carries the whole variance, and `diagnostics.json`
+      records the correlation of the SAVED SERIES (`observed_*`) alongside the
+      latent one.
 
-`z` is a bank of M UNDAMPED oscillators. It is deterministic given z(0), so
-z(C+k) = R^{k+1} z(C-1) — the horizon is genuinely determined by where the
-context left off, and that determination does NOT decay with k.
+2. THE HORIZON AXIS WAS CONFOUNDED WITH THE CORPUS. A separate corpus was
+   generated per horizon (seeded `seed + H`), so reading a trend down the H
+   axis compared different draws. -> ONE corpus, length 2048. The horizon is an
+   evaluation-time slice, and every horizon is scored on the same context
+   window (see `run_eval.py --context`).
 
-WHY UNDAMPED, AND WHY THIS REPLACED A CONTRACTIVE VAR
-The first version of this file used e(t) = Phi e(t-1) + eta(t) with Phi a
-contraction of spectral radius phi. It is the natural way to write "cross-horizon
-dependency", and it does not work here. For a contractive AR the share of the
-horizon residual that the context seam can explain is bounded by
-mean_k phi^{2(k+1)}, which was measured at:
-
-    phi     H=16    H=128   H=1024
-    0.85    0.162   0.020   0.003
-    0.98    0.722   0.188   0.024
-    0.999   0.983   0.881   0.425
-
-so at H=1024 the cross-horizon axis has almost nothing to separate even at
-phi=0.999, and the experiment cannot detect what it exists to measure. A
-rotation has |R^k v| = |v| for every k, so the explained share is set by phi
-alone and is INDEPENDENT of H — which is what makes the horizon sweep a clean
-third axis instead of a confound.
-
-The FiNAR mechanism survives the change, and is in fact sharpened by it.
-Computing E[Y(C+k) | X] still requires composing the rotation k times, so a
-single forward pass must produce H phase-advanced outputs jointly, while a
-second pass given a plug-in estimate of Y(C+k-1) needs ONE more rotation. That
-is the factorization argument in the concept note, and its difficulty grows
-with H — the direction the note's own H-sweep already reports.
-
-WHAT THE ORACLE IS — AND IS NOT
-`oracle_mse = sigma^2 (1 - phi)` is the error of a forecaster that KNOWS THE
-LATENT c(t) exactly. It is NOT E[(Y - E[Y|X])^2]: the context is itself observed
-through noise (X carries m + sigma(sqrt(phi) c + sqrt(1-phi) xi)), so c is only
-ESTIMABLE from X, never known, and the Bayes risk given X is strictly larger.
-
-The gap is small by construction — 2048 context steps constrain 12 oscillators,
-so the latent is very well identified — but it is not zero, and no model can be
-expected to reach this number. It is a LOWER BOUND on achievable error, and the
-excess risk computed against it is therefore an upper bound on the removable
-error. Both tables label it that way; a run that appeared to beat it would mean
-the bound, not the model, is wrong.
-
-PERIOD SCALING — THE SECOND KIND OF H-INVARIANCE
-There are two, and holding one does not hold the other:
-
-  information    what share of the horizon is structured  -> `phi`, held by
-                 construction and verified equal at H=16 and H=1024
-  extractability how hard that structure is to USE        -> set by the
-                 oscillator period RELATIVE to H, and NOT held by `phi`
-
-With `--period-scaling absolute` the periods stay at 40-600 steps, so the
-horizon spans 0.40 cycles at H=16 and 25.6 at H=1024. Estimating a frequency
-from a finite context carries error, and phase error accumulates linearly in k,
-so a 1% frequency error leaves corr(truth, prediction) at:
-
-    H       P=40    P=150   P=600      P=2H (proportional)
-    16      1.000   1.000   1.000      0.999
-    1024    0.630   0.971   0.998      0.999
-
-The information is all still there at H=1024 — it is simply no longer
-extractable in one pass. Chronos-2 shows exactly this on the absolute arm: at
-H=16 its MASE falls 0.3643 -> 0.1497 as phi rises, the intended gradient, while
-at H=1024 phi=high (0.3718) is no better than phi=low (0.3699).
-
-`--period-scaling proportional` scales the periods with H, which is what the
-reference corpus does with `--ell-ratio` (ell/H held at 1, 1/3, 0) and why its
-chronos-2 gradient survives to H=1000. Both arms are worth having: the
-proportional one is the controlled comparison in which the H axis varies length
-alone, and the absolute one is the regime where a single pass demonstrably
-loses structure it could have used — which is the headroom FiNAR claims.
+3. THE phi = 0 ROW WAS DEGENERATE. With phi = 0 the observation reduced to
+   noise plus backbone, so the cross-variate knob had nothing to act on and
+   the three cells of that row were byte-identical. -> The low level is 0.3,
+   not 0.0: every set carries some dependency, which is what makes it a
+   multivariate set at all. `--phi` restores any other choice.
 
 =============================================================================
-WHERE THE CROSS-VARIATE CONSTRUCTION COMES FROM  (three sources, composed)
+THE GRID
 =============================================================================
-Using one mechanism would make the result a statement about that mechanism.
-Three are composed so that "cross-variate dependency" is not a synonym for
-"linear Gaussian coupling":
+Three factors, fully crossed, 27 cells:
 
-1.  LINEAR COREGIONALIZATION — TimePFN (Taga et al., AAAI 2025), whose
-    LMC-Synth draws latent GPs and mixes them into channels,
-    f_d(t) = sum_q a_{d,q} u_q(t) with cross-covariance B_q = A_q A_q^T.
-    `B` here is exactly that mixing matrix: variate c loads sqrt(1-rho) on a
-    PRIVATE oscillator and sqrt(rho) on a bank SHARED by every variate, which
-    gives corr(s_c, s_c') = rho exactly while holding Var(s_c) = 1. rho is
-    therefore a knob with a closed-form meaning, not a dial that also moves the
-    scale.
+| Axis  | Levels                        | What it controls                    |
+|-------|-------------------------------|-------------------------------------|
+| phi   | low 0.3 / mid 0.6 / high 0.9  | dependency ALONG TIME: the variance |
+|       |                               | share of the series carried by the  |
+|       |                               | context-determined factor           |
+| shuf  | none / half / all             | cross-variate dependency, removed   |
+|       |                               | by RE-PAIRING variates across items |
+| group | full 4 / half 2 / no 1        | cross-variate dependency, removed   |
+|       |                               | by SHRINKING the sharing group      |
 
-2.  STRUCTURAL CAUSAL EDGES — CauKer (Ke et al., ICLR 2026), which lays a random
-    DAG over channels and pushes roots through nonlinear activations, with
-    max-parents P_max as the density knob. `g` is that: a sparse random DAG whose
-    edges apply a 1-Lipschitz, zero-preserving activation. Without it every cell
-    is linear-Gaussian and the experiment measures linearity, not refinement.
+The two cross-variate axes are deliberately different mechanisms for lowering
+the same quantity, so they cross-check each other: `all` shuffle and `no`
+group both drive the correlation to zero by different routes and must agree.
 
-3.  LEAD-LAG COUPLING — the repo's own mv_synth multivariatizer
-    (`_mv_lead_lag`, `_mv_var`), whose premise is that real cross-variate
-    structure is not contemporaneous. The DAG edges act at lag L > 0, so a
-    variate's future depends on ANOTHER variate's future at a DIFFERENT time —
-    the case a single forward pass cannot resolve within one column.
+SHUFFLE IS A PERFECT CONTROL, WHICH IS THE POINT. The three shuffle levels of
+one (phi, group) cell are derived from THE SAME generated array; a shuffle
+only re-pairs which variate-series sit in one item. Every variate's marginal
+law is therefore not merely equal in distribution but literally the same set
+of series, so a difference between shuffle levels cannot come from the
+marginal problem getting easier or harder. That is exactly what the old rho
+knob could not promise: it changed `B`, hence each channel's own spectrum.
+
+`half` shuffle re-pairs HALF THE ITEMS, not half the variates. Shuffling two
+of four variates would leave one correlated pair out of six and land almost on
+top of the `no`-group cell; shuffling half the items leaves half the pairs
+intact and puts the midpoint where it belongs.
 
 =============================================================================
-WHAT IS AND IS NOT HELD FIXED
+WHY THE PERIODS ARE WHAT THEY ARE
 =============================================================================
-HELD: the backbone m, the noise scale sigma, the total marginal variance of Y
-(asserted at build time), the oscillator bank, and the item count. Across the
-five horizons the context is byte-identical, so the horizon axis varies H alone.
+Each latent oscillator draws its period per item from {16, 32, ..., 1024}, so
+an item is a mixture of fast and slow structure and the context sees a
+different number of cycles for each.
 
-NOT HELD: the context differs across the nine (phi, rho) cells, and it has to.
-The factor must be IDENTIFIABLE from the context or there is nothing for any
-forecaster to infer, and a factor visible in the context necessarily changes it.
-The reference corpus (`build_cross_horizon.py`, FIRE Experiment 7) makes the
-opposite choice — byte-identical context, unidentifiable future — and its
-docstring records the consequence: the expected iter-k gain is then
-"regime-INVARIANT, so a raw absolute-gain difference across subsets is
-finite-sample noise". That design cannot test a plug-in mechanism. This one can,
-at the price that cells differ in difficulty, which is why excess risk over the
-per-cell oracle is the reported statistic.
+The range is set against the evaluation context, not chosen for its own sake.
+Measured with an oracle that grid-searches the period on the context and
+extrapolates (horizon R^2, one period per sample, log-uniform in [16, 1024]):
 
-Outputs, one directory per cell:
+    context     H=16    H=64    H=256    H=1024
+    64          0.96    0.83    -7.2     -944
+    128         0.98    0.96     0.25    -40.6
+    256         0.97    0.97     0.92      0.44
+    512         0.96    0.96     0.95      0.85
 
-    <out-root>/
-        H{H}_phi{level}_rho{level}/    HF DatasetDict {"train": Dataset} with
-                                       item_id / start / freq / target, target
-                                       shaped (V, C+H) — the layout every
-                                       corpus in tsm-trainer already uses.
-        metadata.json                  every knob, seed and a checksum per cell
-        diagnostics.json               per-cell oracle, measured explained share,
-                                       measured cross-variate correlation
-        viz/                           one PNG per cell
+A negative R^2 means worse than predicting the mean: a small frequency error
+estimated from a short context accumulates linearly into a phase error, and by
+H=256 the extrapolation is anti-phase. Long-horizon extrapolation of an
+oscillation REQUIRES a long context and no choice of period repairs that. The
+default evaluation context is therefore 512, where all four horizons are
+measurable and a difficulty gradient across H survives.
+
+=============================================================================
+THE GENERATIVE PROCESS
+=============================================================================
+For a group G of variates, with M_s shared and one private oscillator each:
+
+    u(t)     shared bank, |G| variates see the SAME u
+    v_c(t)   one private oscillator per variate
+    s_c(t) = sqrt(1-beta) v_c(t) + sqrt(beta) <w, u(t)>      (LMC [1])
+    x_c(t) = (1-kappa) s_c(t) + kappa g_c(s(t-L))            (CauKer [2], lag L)
+    Y_c(t) = sqrt(phi) x_c(t) + sqrt(1-phi) xi_c(t)
+
+`beta` fixes the within-group correlation and is NOT swept: the correlation
+axes are `shuf` and `group`, so leaving beta free would be a third route to
+the same quantity. `w` is drawn once for the build and unit-normalised, so the
+shared component enters every variate of a group with the same sign — an LMC
+loading matrix with free signs gives a zero-MEAN correlation whose pairwise
+spread swamps it, which is the second reason the old build measured nothing.
+
+Oscillators are written closed-form as sinusoids rather than by iterating a
+rotation: the two are the same object, and the closed form does not accumulate
+2048 steps of floating-point drift that a model could read as a trend.
+
+=============================================================================
+WHAT COMES OUT
+=============================================================================
+    <out-root>/phi{L}_sh{L}_gp{L}_s{k}/     HF DatasetDict {"train": Dataset}
+                                            item_id / start / freq / target,
+                                            target (V, 2048) float32
+    <out-root>/metadata.json                argv, sha256 per cell, DAG edges
+    <out-root>/diagnostics.json             per cell: observed correlation on
+                                            the SAVED series, explained share,
+                                            period mix, and the cross-channel
+                                            probe (below)
+    <out-root>/viz/                          one PNG per cell
+
+THE CROSS-CHANNEL PROBE, RECORDED AND NOT ENFORCED. Correlation between
+variates does not by itself make one variate's future INFERABLE from another's
+past: in the old build, giving a linear oracle all eight channels instead of
+one moved horizon R^2 by -0.03 to +0.03. `diagnostics.json` therefore records,
+per cell, the R^2 of a ridge predicting a channel's horizon from its own
+context versus from every channel's context. It is a number to read the
+results against, not a gate: a flat table means something different when the
+gain is 0.00 than when it is 0.20.
 
 Usage:
     python build_dataset.py --out-root /group-volume/ts-dataset/finar_exp001
-    python build_dataset.py --dry-run                      # grid + diagnostics
-    python build_dataset.py --horizons 16 128 --num-series 256   # smoke
+    python build_dataset.py --dry-run                    # grid + diagnostics
+    python build_dataset.py --num-series 128 --shards 2  # smoke
+
+References
+----------
+[1] E. Taga et al. TimePFN: Effective Multivariate Time Series Forecasting
+    with Synthetic Data. AAAI 2025.  (linear coregionalization)
+[2] CauKer: Classification Time Series Foundation Models Can Be Pretrained on
+    Synthetic Data. ICLR 2026. arXiv:2508.02879.  (causal DAG over channels)
 """
 
 from __future__ import annotations
@@ -177,93 +164,63 @@ logger = logging.getLogger("build_finar_exp001")
 # The grid
 # --------------------------------------------------------------------------
 
-#: Cross-horizon knob: the VARIANCE SHARE of the horizon residual carried by the
-#: persistent factor. 0.0 makes the residual pure white noise, so E[e(C+k)|X]=0
-#: and there is nothing along the time axis for a second pass to exploit — the
-#: honest floor. 0.9 leaves a tenth of the residual irreducible, so even the
-#: strongest cell has a finite oracle and a model cannot score 0.
-PHI_LEVELS = {"low": 0.0, "mid": 0.5, "high": 0.9}
+#: Dependency ALONG TIME: the variance share of the series carried by the
+#: context-determined factor. The low level is 0.3 rather than 0.0 so that
+#: every set is genuinely multivariate — at 0.0 the series is white noise and
+#: neither cross-variate axis has anything to act on, which is how the previous
+#: build ended up with three byte-identical cells in its lowest row.
+PHI_LEVELS = {"low": 0.3, "mid": 0.6, "high": 0.9}
 
-#: Cross-variate knob: the correlation between two variates' factor components.
-#: 0.0 leaves V independent univariate problems sharing only the noise scale;
-#: 0.9 makes nine tenths of each variate's structure inferable from the others.
-RHO_LEVELS = {"low": 0.0, "mid": 0.5, "high": 0.9}
+#: Fraction of ITEMS whose variates are re-paired across items. See the module
+#: docstring: half the items, not half the variates.
+SHUFFLE_LEVELS = {"none": 0.0, "half": 0.5, "all": 1.0}
 
-#: The horizon sweep. 16 and 128 sit inside the 75-patch training range of the
-#: EO v4 configs; 256/512/1024 walk out toward the 1200-step ceiling that
-#: max_prediction_patch=75 x input_patch_size=16 imposes, so the longest cell is
-#: near the architectural limit and not past it.
-HORIZONS = (16, 128, 256, 512, 1024)
+#: Variates that share a latent bank. 1 makes every variate its own group,
+#: which is univariate structure delivered in a multivariate container.
+GROUP_SIZES = {"full": 4, "half": 2, "no": 1}
+
+#: Drawn per item and per oscillator. Discrete rather than continuous so the
+#: results can be broken down by period class for free.
+PERIODS = (16, 32, 64, 128, 256, 512, 1024)
+
+#: One length for everything. The horizon is an evaluation-time slice of this.
+SERIES_LENGTH = 2048
+
+#: Recorded for `run_eval.py`, which owns the evaluation protocol. Kept here so
+#: the corpus and the protocol it was sized for stay in one place.
+EVAL_HORIZONS = (16, 64, 256, 1024)
+EVAL_CONTEXT = 512
 
 
-def cell_name(H: int, phi: str, rho: str) -> str:
-    return f"H{H}_phi{phi}_rho{rho}"
+def cell_name(phi: str, shuf: str, group: str) -> str:
+    return f"phi{phi}_sh{shuf}_gp{group}"
+
+
+def groups_of(V: int, size: int) -> list[list[int]]:
+    """Contiguous variate groups. ``size=1`` is V groups of one."""
+    return [list(range(i, min(i + size, V))) for i in range(0, V, size)]
 
 
 # --------------------------------------------------------------------------
-# Latent factors and the cross-variate mixing
+# Latent factors
 # --------------------------------------------------------------------------
 
-def oscillator_bank(n: int, M: int, T: int, rng, p_lo: int, p_hi: int
-                    ) -> np.ndarray:
-    """(n, T, M) unit-variance undamped oscillators, one phase set per item.
+def oscillator_bank(n: int, M: int, T: int, rng, periods=PERIODS) -> np.ndarray:
+    """``(n, T, M)`` unit-variance oscillators, period drawn per item per bank.
 
-    Written as sinusoids rather than by iterating a rotation matrix: they are
-    the same object (z(t) = R^t z(0) with R a rotation IS a sinusoid) and the
-    closed form avoids accumulating T matrix products of floating-point error
-    over 3072 steps, which at H=1024 would show up as a slow amplitude drift
-    that a model could read as a trend.
-
-    sqrt(2) scales each to unit variance, so `phi` is a variance share exactly.
+    sqrt(2) scales a sinusoid to unit variance, so `phi` and `beta` stay exact
+    variance shares rather than approximate ones.
     """
     t = np.arange(T, dtype=np.float64)[None, :, None]
-    period = rng.uniform(p_lo, p_hi, size=(n, 1, M))
+    period = np.asarray(periods, dtype=np.float64)[
+        rng.integers(0, len(periods), size=(n, 1, M))]
     phase = rng.uniform(0, 2 * np.pi, size=(n, 1, M))
-    return np.sqrt(2.0) * np.sin(2 * np.pi * t / period + phase)
+    return np.sqrt(2.0) * np.sin(2 * np.pi * t / period + phase), period[:, 0, :]
 
 
-def shared_weights(n_shared: int, rng) -> np.ndarray:
-    """The shared bank's loading direction, drawn ONCE for the whole build.
-
-    Drawn once and passed in, not redrawn inside `mixing_matrix`, because
-    `calibrate_rho` calls that function tens of times: a fresh draw per call
-    makes the bisection optimise a MOVING TARGET, and the value it converges on
-    then describes a mixing matrix that generation never uses.
-
-    The effect is second-order rather than a bias — every variate loads on the
-    SAME w and ||w|| = 1, so corr(s_c, s_c') = rho exactly whatever direction w
-    points, and only the interaction with the nonlinear DAG moves. That is
-    precisely the part the calibration exists to correct, so it should not be
-    resampled underneath it.
-    """
-    w = rng.normal(size=n_shared)
-    return w / np.linalg.norm(w)
-
-
-def mixing_matrix(V: int, rho: float, n_shared: int, w: np.ndarray) -> np.ndarray:
-    """(V, V + n_shared) LMC loading: private oscillators plus a shared bank.
-
-    Variate c takes sqrt(1-rho) of its OWN oscillator and sqrt(rho) of a shared
-    combination. With unit-variance independent oscillators this gives
-
-        Var(s_c)          = (1-rho) + rho = 1
-        Cov(s_c, s_c')    = rho                     for c != c'
-
-    exactly, so rho is the cross-variate correlation and nothing else moves.
-    The shared weights are normalised to unit L2 for the same reason.
-    """
-    B = np.zeros((V, V + n_shared))
-    B[np.arange(V), np.arange(V)] = np.sqrt(1.0 - rho)
-    if rho > 0:
-        B[:, V:] = np.sqrt(rho) * w[None, :]
-    return B
-
-
-#: CauKer's activation bank, restricted to maps that are both zero-preserving
-#: and 1-Lipschitz. g(0)=0 keeps the nonlinear term from injecting a constant
-#: drift (a level shift at the seam would be trivially detectable); |g'| <= 1
-#: bounds its contribution so kappa stays a share rather than a gain. A cubic
-#: was in this bank and was removed: clipped at +-3 its slope reaches 3.
+#: CauKer's activation bank, restricted to maps that are zero-preserving and
+#: 1-Lipschitz: g(0)=0 keeps the nonlinear term from injecting a level shift at
+#: the seam, and |g'| <= 1 keeps kappa a share rather than a gain.
 ACTIVATIONS = {
     "tanh": np.tanh,
     "sin": np.sin,
@@ -271,150 +228,196 @@ ACTIVATIONS = {
 }
 
 
-def sample_dag(V: int, p_max: int, rng) -> list[tuple[int, int, str, float]]:
-    """A random DAG over variates: ``[(child, parent, activation, weight)]``.
+def sample_dag(group: list[int], p_max: int, rng
+               ) -> list[tuple[int, int, str, float]]:
+    """A random DAG over ONE group: ``[(child, parent, activation, weight)]``.
 
-    CauKer's P_max is the density knob. Edges run from lower to higher index,
-    which is what makes it acyclic; the variate order is arbitrary so this
-    costs no generality. Each child's incoming weights are normalised to
-    sum|w| = 1, so a child that drew two parents does not thereby get twice the
-    gain of one that drew a single parent.
+    Edges never cross a group boundary — the DAG is one of the mechanisms the
+    `group` axis switches off, so letting it reach outside would leave a
+    cross-variate pathway open in the `no`-group cells and the axis would not
+    reach zero. Edges run low index to high, which is what makes it acyclic.
     """
     edges, names = [], list(ACTIVATIONS)
-    for child in range(1, V):
-        k = int(rng.integers(0, min(p_max, child) + 1))
+    for pos, child in enumerate(group):
+        if pos == 0:
+            continue
+        k = int(rng.integers(0, min(p_max, pos) + 1))
         if k == 0:
             continue
-        parents = rng.choice(child, size=k, replace=False)
+        parents = rng.choice(group[:pos], size=k, replace=False)
         w = rng.normal(size=k)
         w /= np.abs(w).sum()
-        for parent, wi in zip(parents, w):
-            edges.append((child, int(parent),
+        for parent, wi in zip(np.atleast_1d(parents), np.atleast_1d(w)):
+            edges.append((int(child), int(parent),
                           names[int(rng.integers(len(names)))], float(wi)))
     return edges
 
 
-def apply_dag(s_lag: np.ndarray, edges, V: int) -> np.ndarray:
-    out = np.zeros_like(s_lag)
-    for child, parent, act, w in edges:
-        out[..., child] += w * ACTIVATIONS[act](s_lag[..., parent])
-    return out
+def couple(s: np.ndarray, edges, kappa: float, lag: int) -> np.ndarray:
+    """``(1-kappa) s + kappa g(s(t-lag))``, renormalised to unit variance.
 
-
-def couple(s: np.ndarray, edges, kappa: float, lag: int, V: int) -> np.ndarray:
-    """(1-kappa) s(t) + kappa g(s(t-L)), renormalised to unit variance.
-
-    Renormalised because the DAG output is not unit-variance (the activations
-    squash, and a child with no parents contributes nothing), and without the
-    rescale `phi` would stop being a variance share the moment kappa > 0 —
-    silently coupling the nonlinearity knob to the cross-horizon axis.
+    The lag is what makes this a LEAD-LAG term: a variate's value depends on
+    another variate's value at a DIFFERENT time, which is the case a single
+    forward pass cannot resolve inside one column.
     """
-    if not kappa or not edges:
-        return s
-    lagged = np.concatenate([np.zeros_like(s[:, :lag, :]), s[:, :-lag, :]], axis=1)
-    c = (1.0 - kappa) * s + kappa * apply_dag(lagged, edges, V)
+    lagged = np.empty_like(s)
+    lagged[:, :lag] = s[:, :1]
+    lagged[:, lag:] = s[:, :-lag]
+    out = np.zeros_like(s)
+    for child, parent, act, w in edges:
+        out[..., child] += w * ACTIVATIONS[act](lagged[..., parent])
+    c = (1.0 - kappa) * s + kappa * out
     sd = c.std(axis=(0, 1), keepdims=True)
     return c / np.where(sd > 0, sd, 1.0)
 
 
-def measured_corr(osc, B, edges, kappa, lag, V) -> float:
-    """Mean off-diagonal correlation of the coupled signal, as generated."""
-    c = couple(osc @ B.T, edges, kappa, lag, V)
-    cc = np.corrcoef(c.reshape(-1, V).T)
-    return float((cc.sum() - V) / (V * (V - 1)))
+def build_base(n: int, V: int, T: int, phi: float, beta: float, size: int,
+               kappa: float, lag: int, p_max: int, rng
+               ) -> tuple[np.ndarray, np.ndarray, list, np.ndarray]:
+    """One (phi, group) cell BEFORE shuffling — ``(Y, factor, edges, periods)``.
 
-
-def calibrate_rho(target: float, V: int, n_shared: int, edges, kappa: float,
-                  lag: int, osc: np.ndarray, w: np.ndarray, tol: float = 5e-3,
-                  iters: int = 40) -> tuple[float, float]:
-    """Loading rho_b whose GENERATED cross-variate correlation is ``target``.
-
-    The nominal loading does not survive `couple`: the DAG term is itself a
-    cross-variate mechanism, so it both dilutes a requested correlation and
-    contributes one of its own. Measured against nominal, uncalibrated:
-
-        rho = 0.0  ->  -0.035      (the DAG's own coupling, not zero)
-        rho = 0.5  ->   0.384      (diluted by a fifth)
-        rho = 0.9  ->   0.847
-
-    Reporting those as "low / mid / high = 0.0 / 0.5 / 0.9" would put a number
-    in the paper that the data does not have, and the mid cell would sit closer
-    to 0.4 than to the midpoint it is supposed to mark. Bisection on the
-    loading fixes both, and the achieved value is recorded either way.
-
-    Bisects on rho_b in [0, 1); monotone because raising the shared loading can
-    only raise the shared variance share. Returns ``(rho_b, achieved)``.
+    ``Y`` is ``(n, T, V)`` and is the observed series: there is no backbone to
+    add on top of it, which is the whole point (see the module docstring).
+    ``factor`` is the deterministic part, returned so the caller can MEASURE
+    the explained share rather than trust the algebra.
     """
-    lo, hi = 0.0, 0.999
-    best = (0.0, measured_corr(osc, mixing_matrix(V, 0.0, n_shared, w),
-                               edges, kappa, lag, V))
-    if abs(best[1] - target) < tol:
-        return best
-    for _ in range(iters):
-        mid = 0.5 * (lo + hi)
-        got = measured_corr(osc, mixing_matrix(V, mid, n_shared, w),
-                            edges, kappa, lag, V)
-        if abs(got - target) < abs(best[1] - target):
-            best = (mid, got)
-        if abs(got - target) < tol:
-            break
-        if got < target:
-            lo = mid
-        else:
-            hi = mid
-    return best
+    gs = groups_of(V, size)
+    n_shared = 4
+    s = np.empty((n, T, V))
+    per = np.empty((n, V))
+    edges: list = []
+    for g in gs:
+        shared, p_sh = oscillator_bank(n, n_shared, T, rng)
+        priv, p_pr = oscillator_bank(n, len(g), T, rng)
+        w = rng.normal(size=n_shared)
+        w /= np.linalg.norm(w)
+        common = shared @ w                                   # (n, T)
+        for j, c in enumerate(g):
+            s[:, :, c] = (np.sqrt(1.0 - beta) * priv[:, :, j]
+                          + np.sqrt(beta) * common)
+            per[:, c] = p_pr[:, j]
+        edges += sample_dag(g, p_max, rng)
+    x = couple(s, edges, kappa, lag)
+    xi = rng.normal(size=(n, T, V))
+    Y = np.sqrt(phi) * x + np.sqrt(1.0 - phi) * xi
+    return Y, np.sqrt(phi) * x, edges, per
 
 
-def backbone(n: int, V: int, T: int, periods, rng) -> np.ndarray:
-    """(n, T, V) deterministic seasonal mean, one phase/amplitude per variate."""
-    t = np.arange(T, dtype=np.float64)[None, :, None]
-    m = rng.normal(0.0, 0.5, size=(n, 1, V))
-    for P in periods:
-        amp = rng.uniform(0.5, 1.5, size=(n, 1, V))
-        psi = rng.uniform(0, 2 * np.pi, size=(n, 1, V))
-        m = m + amp * np.sin(2 * np.pi * t / P + psi)
-    return m
+def apply_shuffle(Y: np.ndarray, frac: float, rng) -> np.ndarray:
+    """Re-pair variates across a fraction of the items.
 
+    A PERMUTATION, not a resample: every variate-series that went in comes out,
+    only in a different item. The marginal law of each channel is therefore
+    untouched by construction rather than by argument, so a difference between
+    shuffle levels can only be a difference in the JOINT structure.
 
-def build_cell(m_full, osc, white, phi, rho_b, edges, kappa, lag, sigma, V, w
-               ) -> tuple[np.ndarray, np.ndarray]:
-    """``(target, signal)`` for one cell — (n, T, V) each.
-
-    ``osc`` and ``white`` are SHARED across the nine cells AT A GIVEN HORIZON,
-    so two cells of one horizon differ only through B(rho) and the phi mix.
-    They are NOT shared between horizons — see the module docstring. ``signal`` is the
-    deterministic part of the residual and is returned so the caller can
-    measure the oracle and the realised cross-variate correlation instead of
-    trusting the algebra.
+    Each variate gets its OWN permutation of the selected items; using one
+    permutation for all of them would move whole items around and leave every
+    item's internal correlation exactly where it was.
     """
-    B = mixing_matrix(V, rho_b, n_shared=osc.shape[2] - V, w=w)
-    s = osc @ B.T
-    c = couple(s, edges, kappa, lag, V)
-    e = np.sqrt(phi) * c + np.sqrt(1.0 - phi) * white
-    return m_full + sigma * e, np.sqrt(phi) * c
+    if frac <= 0:
+        return Y
+    out = Y.copy()
+    n = len(Y)
+    k = n if frac >= 1.0 else int(round(frac * n))
+    sel = rng.choice(n, size=k, replace=False)
+    for c in range(Y.shape[2]):
+        out[sel, :, c] = Y[rng.permutation(sel), :, c]
+    return out
 
 
-def save_cell(target: np.ndarray, root: Path, name: str, freq: str, start: str,
+# --------------------------------------------------------------------------
+# Diagnostics measured on what is actually written
+# --------------------------------------------------------------------------
+
+def observed_corr(Y: np.ndarray, lo: int, hi: int) -> tuple[float, float]:
+    """``(signed mean, mean |corr|)`` over variate pairs of the SAVED series.
+
+    Both, because they answer different questions and the old build was misled
+    by having neither. The signed mean is the designed quantity. The absolute
+    mean is the nuisance floor: variates that share a period but not a phase
+    correlate by a random amount whose sign averages out, so a signed mean near
+    zero beside a large absolute mean means the axis is buried in pair noise.
+    """
+    V = Y.shape[2]
+    iu = np.triu_indices(V, 1)
+    sg, ab = [], []
+    for i in range(min(len(Y), 256)):
+        C = np.corrcoef(Y[i, lo:hi].T)
+        v = C[iu]
+        v = v[np.isfinite(v)]
+        if v.size:
+            sg.append(v.mean())
+            ab.append(np.abs(v).mean())
+    return (float(np.mean(sg)) if sg else 0.0,
+            float(np.mean(ab)) if ab else 0.0)
+
+
+def _ridge_r2(X, Y, lam, rng, frac=0.7) -> float:
+    n = len(X)
+    idx = rng.permutation(n)
+    tr, te = idx[:int(frac * n)], idx[int(frac * n):]
+    mx, my = X[tr].mean(0), Y[tr].mean(0)
+    Xt = X[tr] - mx
+    W = np.linalg.solve(Xt.T @ Xt + lam * len(tr) * np.eye(X.shape[1]),
+                        Xt.T @ (Y[tr] - my))
+    P = (X[te] - mx) @ W + my
+    den = ((Y[te] - Y[te].mean(0)) ** 2).mean()
+    return float(1.0 - ((Y[te] - P) ** 2).mean() / den) if den > 0 else 0.0
+
+
+def cross_channel_probe(Y: np.ndarray, context: int, horizon: int, rng,
+                        n_items: int = 2048, stride: int = 4) -> dict:
+    """How much a channel's horizon needs the OTHER channels' context.
+
+    Recorded, never enforced — see the module docstring. Two ridges per target
+    channel, own-context and all-context, on the same split; the reported gain
+    is the mean over channels. A cell where the gain is ~0 has correlation that
+    a forecaster cannot convert into accuracy, and a flat row in the results
+    table then says nothing about refinement.
+
+    THE CONTEXT IS STRIDED, and that is not an optimisation. The all-channel
+    design matrix has V times the columns of the own-channel one, so at full
+    resolution it is the wider model that is starved of rows, and the gain
+    measures conditioning rather than information — the first version of this
+    probe returned a NEGATIVE gain on cells whose observed correlation is 0.66.
+    A stride of 4 keeps 4 samples per cycle at the shortest period in `PERIODS`
+    (Nyquist needs 2) while leaving the wide model comfortably overdetermined.
+    """
+    n, T, V = Y.shape
+    n = min(n, n_items)
+    a = T - horizon
+    ctx, hor = Y[:n, a - context:a:stride, :], Y[:n, a:, :]
+    lams = (1e-2, 1e-1, 1.0)
+    own = [max(_ridge_r2(ctx[:, :, v], hor[:, :, v], l, rng) for l in lams)
+           for v in range(V)]
+    allc = [max(_ridge_r2(ctx.reshape(n, -1), hor[:, :, v], l, rng)
+                for l in lams) for v in range(V)]
+    return {"r2_own_channel": float(np.mean(own)),
+            "r2_all_channels": float(np.mean(allc)),
+            "cross_channel_gain": float(np.mean(allc) - np.mean(own)),
+            "probe_context": context, "probe_horizon": horizon,
+            "probe_stride": stride, "probe_n_items": n,
+            "probe_features_own": int(ctx.shape[1]),
+            "probe_features_all": int(ctx.shape[1] * V)}
+
+
+# --------------------------------------------------------------------------
+# Output
+# --------------------------------------------------------------------------
+
+def save_cell(Y: np.ndarray, root: Path, name: str, freq: str, start: str,
               shards: int) -> str:
     """Write one cell as ``shards`` sibling corpora and return its sha256.
 
-    SHARDED BECAUSE THE EVALUATOR AGGREGATES. tsm-trainer's generic yaml path
-    emits ONE ROW PER DATASET, so a cell written as a single corpus of 2048
-    series yields n=1 and a per-cell win rate degenerates to 0 or 1 — measured,
-    not assumed: the first smoke run returned exactly that. Sixteen shards of
-    128 series give a win rate over 16 units, and because the shards are equal
-    sized their mean is the pooled mean, so no other statistic changes.
-
-    It is affordable because the loader has no fixed per-dataset cost: loading
-    2048 series took 2.01s and 128 took 0.10s, i.e. the cost is in the bytes,
-    and the same bytes split 16 ways cost the same.
-
-    The digest is of the WHOLE cell, before splitting, so the byte-identity
-    check across cells is unaffected by the shard count.
+    SHARDED BECAUSE THE EVALUATOR AGGREGATES: its generic yaml path emits one
+    row per dataset, so a cell written as a single corpus yields n=1 and any
+    per-cell dispersion statistic has no denominator. Equal-sized shards make
+    the shard mean the pooled mean, so nothing else changes.
     """
     from datasets import Dataset, DatasetDict
 
-    arr = np.ascontiguousarray(target.transpose(0, 2, 1).astype(np.float32))
+    arr = np.ascontiguousarray(Y.transpose(0, 2, 1).astype(np.float32))
     digest = hashlib.sha256(arr.tobytes()).hexdigest()
     n = arr.shape[0]
     bounds = np.linspace(0, n, shards + 1).astype(int)
@@ -434,17 +437,16 @@ def save_cell(target: np.ndarray, root: Path, name: str, freq: str, start: str,
     return digest
 
 
-def plot_cell(target: np.ndarray, C: int, path: Path, title: str) -> None:
+def plot_cell(Y: np.ndarray, split: int, path: Path, title: str) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(10, 3.0))
-    lo = max(0, C - 200)
-    for c in range(min(4, target.shape[2])):
-        ax.plot(range(lo, target.shape[1]), target[0, lo:, c], lw=0.8,
-                label=f"var {c}")
-    ax.axvline(C, color="k", ls="--", lw=0.8)
+    lo = max(0, split - 400)
+    for c in range(min(4, Y.shape[2])):
+        ax.plot(range(lo, Y.shape[1]), Y[0, lo:, c], lw=0.8, label=f"var {c}")
+    ax.axvline(split, color="k", ls="--", lw=0.8)
     ax.set_title(title, fontsize=9)
     ax.legend(fontsize=6, ncol=4)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -459,154 +461,109 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--out-root", type=Path,
                    default=Path("/group-volume/ts-dataset/finar_exp001"))
-    p.add_argument("--horizons", type=int, nargs="+", default=list(HORIZONS))
     p.add_argument("--num-series", type=int, default=2048)
-    p.add_argument("--num-variates", type=int, default=8)
-    p.add_argument("--context-length", type=int, default=2048)
-    p.add_argument("--num-shared", type=int, default=4,
-                   help="oscillators in the SHARED bank (the rho pathway)")
-    p.add_argument("--period-scaling", choices=("absolute", "proportional"),
-                   default="absolute",
-                   help="ABSOLUTE holds the oscillator periods fixed in steps, "
-                        "so a longer horizon spans more cycles and the same "
-                        "structure gets harder to extrapolate. PROPORTIONAL "
-                        "scales them with H, so the horizon always spans the "
-                        "same number of cycles — the choice the reference "
-                        "cross-horizon corpus makes with --ell-ratio. See "
-                        "PERIOD SCALING in the module docstring.")
-    p.add_argument("--period-range", type=float, nargs=2, default=[40.0, 600.0],
-                   help="oscillator period range in STEPS, when "
-                        "--period-scaling absolute")
-    p.add_argument("--period-mult", type=float, nargs=2, default=[0.25, 2.0],
-                   help="oscillator period range as MULTIPLES OF H, when "
-                        "--period-scaling proportional. The default spans "
-                        "0.5-4 cycles per horizon at every H, and keeps at "
-                        "least one full period inside a 2048-step context "
-                        "even at H=1024.")
-    p.add_argument("--periods", type=int, nargs="+", default=[24, 96, 168],
-                   help="backbone seasonalities")
-    p.add_argument("--sigma", type=float, default=0.5,
-                   help="scale of the whole horizon residual")
+    p.add_argument("--num-variates", type=int, default=4)
+    p.add_argument("--length", type=int, default=SERIES_LENGTH)
+    p.add_argument("--phi", type=float, nargs=3, default=None,
+                   metavar=("LOW", "MID", "HIGH"),
+                   help="override the three dependency-along-time levels")
+    p.add_argument("--beta", type=float, default=0.8,
+                   help="within-group cross-variate share. NOT an axis: the "
+                        "correlation axes are --shuffle and --group, and a "
+                        "third route to the same quantity would confound them")
     p.add_argument("--p-max", type=int, default=2,
-                   help="CauKer max-parents: cross-variate DAG density")
+                   help="CauKer max-parents: within-group DAG density")
     p.add_argument("--kappa", type=float, default=0.3,
-                   help="share of the signal routed through the nonlinear "
-                        "lagged DAG term; 0 makes every cell linear-Gaussian")
+                   help="share routed through the nonlinear lagged DAG term")
     p.add_argument("--lag", type=int, default=3,
                    help="lead-lag depth of the DAG term, in steps")
-    p.add_argument("--shards", type=int, default=16,
-                   help="sibling corpora per cell. The evaluator reports one "
-                        "row per dataset, so this is what gives a per-cell win "
-                        "rate a denominator; 1 restores a single corpus.")
+    p.add_argument("--shards", type=int, default=8)
+    p.add_argument("--probe-context", type=int, default=EVAL_CONTEXT)
+    p.add_argument("--probe-horizon", type=int, default=256)
+    p.add_argument("--no-probe", action="store_true",
+                   help="skip the cross-channel probe (it is the slow part)")
     p.add_argument("--freq", default="h")
     p.add_argument("--start", default="2020-01-01T00:00:00")
-    p.add_argument("--seed", type=int, default=20260905)
-    p.add_argument("--dry-run", action="store_true",
-                   help="report the grid and its diagnostics without writing")
+    p.add_argument("--seed", type=int, default=20260907)
+    p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         datefmt="%H:%M:%S")
-    V, C, n = args.num_variates, args.context_length, args.num_series
-    M = V + args.num_shared
-
-    dag_rng = np.random.default_rng(args.seed)
-    edges = sample_dag(V, args.p_max, dag_rng)
-    # ONE draw for the whole build, so calibration and generation describe the
-    # same mixing matrix — see shared_weights.
-    w_shared = shared_weights(args.num_shared, dag_rng)
-    logger.info("cross-variate DAG: %d edges over %d variates (P_max=%d)",
-                len(edges), V, args.p_max)
+    V, T, n = args.num_variates, args.length, args.num_series
+    phis = (dict(zip(("low", "mid", "high"), args.phi)) if args.phi
+            else PHI_LEVELS)
+    split = T - args.probe_horizon
 
     meta = {"argv": sys.argv,
             "config": {k: (str(v) if isinstance(v, Path) else v)
                        for k, v in vars(args).items()},
-            "dag_edges": edges, "cells": {}}
+            "grid": {"phi": phis, "shuffle": SHUFFLE_LEVELS,
+                     "group": GROUP_SIZES, "periods": list(PERIODS),
+                     "eval_horizons": list(EVAL_HORIZONS),
+                     "eval_context": EVAL_CONTEXT},
+            "cells": {}}
     diag: dict = {"cells": {}}
 
-    for H in args.horizons:
-        T = C + H
-        h_rng = np.random.default_rng(args.seed + H)
-        m_full = backbone(n, V, T, args.periods, h_rng)
-        p_lo, p_hi = (args.period_range if args.period_scaling == "absolute"
-                      else [m * H for m in args.period_mult])
-        logger.info("  H=%-5d period range %.1f-%.1f steps (%.2f-%.2f cycles "
-                    "per horizon)", H, p_lo, p_hi, H / p_hi, H / p_lo)
-        osc = oscillator_bank(n, M, T, h_rng, p_lo, p_hi)
-        white = h_rng.standard_normal((n, T, V))
-
-        # Calibrate on a SUBSAMPLE: the correlation is a population quantity
-        # and 128 items over the shared bank estimate it to well inside the
-        # 5e-3 tolerance, while calibrating on all 2048 would cost 40 full
-        # couples per level.
-        cal_osc = osc[: min(128, n)]
-        rho_b = {}
-        for rl, rho in RHO_LEVELS.items():
-            b, got = calibrate_rho(rho, V, args.num_shared, edges, args.kappa,
-                                   args.lag, cal_osc, w_shared)
-            rho_b[rl] = b
-            logger.info("  H=%-5d rho %-5s target %.2f -> loading %.4f "
-                        "(achieved %.3f)", H, rl, rho, b, got)
-
-        for pl, phi in PHI_LEVELS.items():
-            for rl, rho in RHO_LEVELS.items():
-                name = cell_name(H, pl, rl)
-                # One rng per cell, seeded positionally — str hashing is salted
-                # per interpreter unless PYTHONHASHSEED is pinned, so a hashed
-                # seed would rebuild a different corpus on every run.
-                target, sig = build_cell(m_full, osc, white, phi, rho_b[rl],
-                                         edges, args.kappa, args.lag,
-                                         args.sigma, V, w_shared)
-
-                fut = slice(C, T)
-                # MEASURED, not assumed. The oracle knows the deterministic part
-                # exactly, so its residual is the white component: sigma^2(1-phi).
-                resid = (target - m_full) / args.sigma
-                explained = float(sig[:, fut].var() / resid[:, fut].var())
-                oracle = float(args.sigma**2 * (1.0 - phi))
-                # Realised cross-variate correlation of the structured part,
-                # averaged over variate pairs — this is what rho promises.
-                f = sig[:, fut].reshape(-1, V)
-                cc = np.corrcoef(f.T) if phi > 0 else np.eye(V)
-                xvar = float((cc.sum() - V) / (V * (V - 1)))
-
-                diag["cells"][name] = {
-                    "H": H, "phi_level": pl, "phi": phi,
-                    "rho_level": rl, "rho": rho, "rho_loading": rho_b[rl],
-                    "oracle_mse_latent_lower_bound": oracle,
-                    "period_scaling": args.period_scaling,
-                    "period_lo": p_lo, "period_hi": p_hi,
-                    "cycles_per_horizon": [H / p_hi, H / p_lo],
+    for gi, (gl, size) in enumerate(GROUP_SIZES.items()):
+        for pi, (pl, phi) in enumerate(phis.items()):
+            # ONE draw per (phi, group); the three shuffle levels are derived
+            # from it, which is what makes the shuffle axis a pure control.
+            #
+            # POSITIONAL seeds, never hash(str): Python salts string hashes per
+            # interpreter unless PYTHONHASHSEED is pinned, so a hash-derived
+            # seed rebuilds a DIFFERENT corpus on every run. This build has
+            # been bitten by exactly that before.
+            rng = np.random.default_rng(args.seed + 1000 * gi + 100 * pi)
+            base, factor, edges, per = build_base(
+                n, V, T, phi, args.beta, size, args.kappa, args.lag,
+                args.p_max, rng)
+            explained = float(factor[:, split:].var()
+                              / base[:, split:].var())
+            for si, (sl, frac) in enumerate(SHUFFLE_LEVELS.items()):
+                name = cell_name(pl, sl, gl)
+                Y = apply_shuffle(base, frac, np.random.default_rng(
+                    args.seed + 1000 * gi + 100 * pi + 10 + si))
+                sg, ab = observed_corr(Y, split, T)
+                cell = {
+                    "phi_level": pl, "phi": phi,
+                    "shuffle_level": sl, "shuffle_frac": frac,
+                    "group_level": gl, "group_size": size,
+                    "n_groups": len(groups_of(V, size)),
+                    "beta": args.beta,
+                    "observed_corr_signed": sg,
+                    "observed_corr_abs": ab,
                     "measured_explained_frac": explained,
-                    "measured_cross_variate_corr": xvar,
-                    "horizon_var": float(target[:, fut].var()),
-                    "context_var": float(target[:, :C].var()),
+                    "series_var": float(Y.var()),
+                    "period_hist_private": {str(P): int((per == P).sum())
+                                    for P in PERIODS},
                 }
+                if not args.no_probe:
+                    cell.update(cross_channel_probe(
+                        Y, args.probe_context, args.probe_horizon,
+                        np.random.default_rng(args.seed)))
+                diag["cells"][name] = cell
+                logger.info(
+                    "%-26s corr=%+.3f (|.|=%.3f) explained=%.3f gain=%+.3f",
+                    name, sg, ab, explained,
+                    cell.get("cross_channel_gain", float("nan")))
                 if args.dry_run:
-                    logger.info(
-                        "  [dry] %-24s oracle=%.4f explained=%.3f (phi=%.2f) "
-                        "xcorr=%.3f (rho=%.2f) var=%.3f",
-                        name, oracle, explained, phi, xvar, rho,
-                        diag["cells"][name]["horizon_var"])
                     continue
-
-                digest = save_cell(target, args.out_root, name, args.freq,
+                digest = save_cell(Y, args.out_root, name, args.freq,
                                    args.start, args.shards)
                 meta["cells"][name] = {"sha256": digest, "n": n, "V": V,
-                                       "C": C, "H": H, "shards": args.shards}
-                plot_cell(target, C, args.out_root / "viz" / f"{name}.png", name)
-                logger.info("  %-24s oracle=%.4f explained=%.3f sha=%s",
-                            name, oracle, explained, digest[:12])
+                                       "T": T, "dag_edges": edges}
+                plot_cell(Y, split, args.out_root / "viz" / f"{name}.png",
+                          f"{name}  corr={sg:+.2f}  explained={explained:.2f}")
 
     if args.dry_run:
-        logger.info("dry run: %d cells", len(diag["cells"]))
-        print(json.dumps(diag, indent=1)[:0])  # keep json import honest
+        logger.info("dry run: %d cells, nothing written", len(diag["cells"]))
         return 0
-
     args.out_root.mkdir(parents=True, exist_ok=True)
     (args.out_root / "metadata.json").write_text(json.dumps(meta, indent=1))
     (args.out_root / "diagnostics.json").write_text(json.dumps(diag, indent=1))
-    logger.info("wrote %d cells to %s", len(meta["cells"]), args.out_root)
+    logger.info("wrote %d cells x %d shards to %s",
+                len(diag["cells"]), args.shards, args.out_root)
     return 0
 
 

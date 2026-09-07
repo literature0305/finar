@@ -26,11 +26,40 @@ returns False as soon as `report_depth() == 1`, before it ever reads
 itself gated on having depths to report. This driver therefore reads the
 checkpoint's config and refuses up front.
 
+THE HORIZON IS A SLICE, NOT A CORPUS
+The grid is built once at length 2048 (`build_dataset.py`), and a horizon is a
+VIEW of it. Two things follow, and both are the point:
+
+  * reading a trend down the H axis compares one corpus with itself, not four
+    independent draws — which is what the previous build did, and what made a
+    per-horizon trend uninterpretable;
+  * every horizon is scored on the SAME context window. The window is anchored
+    at ``2048 - 1024`` so it does not move when `--horizons` selects a subset,
+    and it ends where the longest horizon begins.
+
+Fixing the context is not cosmetic. With ``offset = -H`` the evaluator's
+context is everything before the split, so it would otherwise be ``2048 - H``
+and shrink by a factor of 64 across this sweep — the H axis would then vary
+horizon length and context length together. The evaluator has no context-length
+knob (`gluonts_split` takes the whole prefix) and its `series_end` trimming
+cannot express this either: `series_trim` requires the trimmed series to hold
+``|offset| + prediction_length = 2H`` steps, so a view of ``512 + H`` would drop
+every series at H > 512. Materialising the view is the way that works.
+
+WHY 512 STEPS OF CONTEXT
+An oracle that grid-searches the oscillator period on the context and
+extrapolates reaches horizon R^2 of 0.96 / 0.96 / 0.95 / 0.85 at H = 16 / 64 /
+256 / 1024 from 512 steps, and -7 / -944 at the two long horizons from 64
+steps (negative = worse than predicting the mean, because a frequency error
+estimated from a short context accumulates linearly into a phase error). 512 is
+the shortest context at which all four horizons are measurable at all.
+
 Usage
 -----
     python run_eval.py --model-path <ckpt> --data-root <corpora> --out <dir>
     python run_eval.py ... --coe-eval-depth 2       # default 4
-    python run_eval.py ... --horizons 16 128        # subset of the grid
+    python run_eval.py ... --context 256            # default 512
+    python run_eval.py ... --horizons 16 64         # subset of the sweep
     python run_eval.py --model-path autogluon/chronos-2 ...   # baseline
 """
 
@@ -44,6 +73,7 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 logger = logging.getLogger("finar_exp001_eval")
@@ -51,6 +81,14 @@ logger = logging.getLogger("finar_exp001_eval")
 #: The repo is imported, never modified. Overridable for a different checkout.
 DEFAULT_REPO = Path("/group-volume/workspace/mun-hak.lee/experiments/"
                     "tsm-trainer_001/tsm-trainer")
+
+#: The evaluation protocol. These are properties of the SWEEP, not of a run:
+#: the anchor is derived from the longest horizon so that selecting a subset of
+#: horizons leaves every context window exactly where it was.
+HORIZONS = (16, 64, 256, 1024)
+CONTEXT = 512
+SERIES_LENGTH = 2048
+ANCHOR = SERIES_LENGTH - max(HORIZONS)      # 1024: where every horizon starts
 
 
 def add_repo_to_path(repo: Path) -> None:
@@ -80,14 +118,70 @@ def checkpoint_depths(model_path: str) -> tuple[int | None, int | None]:
     return eo.get("coe_train_depth_max"), eo.get("coe_eval_depth")
 
 
+def view_name(shard: str, context: int, H: int) -> str:
+    return f"{shard}_c{context}h{H}"
+
+
+def make_views(data_root: Path, views_root: Path, shards: list[str],
+               context: int, horizons, force: bool = False
+               ) -> list[tuple[str, int]]:
+    """Materialise ``context + H`` slices of every shard, one per horizon.
+
+    Returns the ``[(view name, H)]`` the yaml should list.
+
+    A view is ``target[..., ANCHOR - context : ANCHOR + H]``, so the context
+    window is byte-identical across the four horizons and only the horizon
+    grows. They are real corpora rather than symlinks because they differ in
+    length — but they are DETERMINISTIC SLICES OF ONE BUILD, so the objection
+    that killed the previous design (four independently generated corpora)
+    does not apply.
+
+    Distinct directory names matter: the evaluator names a result row after the
+    dataset, so four views of one shard under one name would collide and the
+    pairwise tools reject a csv with duplicate keys.
+    """
+    import datasets as hf
+
+    views_root.mkdir(parents=True, exist_ok=True)
+    lo = ANCHOR - context
+    if lo < 0:
+        raise SystemExit(
+            f"--context {context} does not fit before the horizon anchor at "
+            f"{ANCHOR}; the longest horizon needs {max(horizons)} steps of the "
+            f"{SERIES_LENGTH}-step series")
+    made = []
+    for shard in shards:
+        src = None
+        for H in horizons:
+            name = view_name(shard, context, H)
+            dest = views_root / name
+            made.append((name, H))
+            if dest.is_dir() and not force:
+                continue
+            if src is None:
+                ds = hf.load_from_disk(str(data_root / shard))
+                src = ds["train"] if hasattr(ds, "keys") else ds
+                tgt = np.asarray(src["target"], dtype=np.float32)
+                cols = {c: src[c] for c in ("item_id", "start", "freq")
+                        if c in src.column_names}
+            cut = tgt[..., lo:ANCHOR + H]
+            hf.DatasetDict({"train": hf.Dataset.from_dict(
+                {**cols, "target": [x.tolist() for x in cut]})}
+            ).save_to_disk(str(dest))
+    logger.info("views: %d slices of %d shards under %s (context %d, "
+                "window [%d, %d) + horizon)",
+                len(made), len(shards), views_root, context, lo, ANCHOR)
+    return made
+
+
 def write_config(data_root: Path, cells: list[tuple[str, int]],
                  out: Path) -> Path:
-    """A chronos-style benchmark yaml for the selected cells.
+    """A chronos-style benchmark yaml for the selected views.
 
     ``offset = -prediction_length`` with ``num_rolls = 1`` scores exactly the
-    last H steps of each series once, which is what the corpus was built for:
-    the generator appends H horizon steps after C context steps, so any other
-    offset would score part of the context.
+    last H steps of each view once. Since a view is exactly ``context + H``
+    long, that leaves precisely ``context`` steps of history — which is the
+    whole reason the views exist.
     """
     cfg = {
         "datasets_root": str(data_root),
@@ -114,8 +208,17 @@ def main() -> int:
                         "reports every depth from 1 to this. May exceed the "
                         "checkpoint's training depth on purpose — that is the "
                         "extrapolation arm — but never go below 2.")
-    p.add_argument("--horizons", type=int, nargs="+", default=None,
-                   help="subset of the grid's horizons (default: all present)")
+    p.add_argument("--horizons", type=int, nargs="+", default=list(HORIZONS),
+                   help="horizons to slice and score (default: 16 64 256 1024)")
+    p.add_argument("--context", type=int, default=CONTEXT,
+                   help="observed steps before every horizon. Held EQUAL "
+                        "across horizons, which is the point of the views; "
+                        "see WHY 512 STEPS OF CONTEXT in the module docstring")
+    p.add_argument("--views-root", type=Path, default=None,
+                   help="where the context+H slices go (default: "
+                        "<data-root>/views)")
+    p.add_argument("--force-views", action="store_true",
+                   help="rewrite the slices even if they already exist")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--allow-shallow", action="store_true",
                    help="run a non-COE or depth-1 model anyway, for the "
@@ -163,23 +266,29 @@ def main() -> int:
         raise SystemExit(
             f"--data-root {args.data_root} does not exist. Build the grid "
             f"first:\n  python build_dataset.py --out-root {args.data_root}")
-    cells = []
-    for d in sorted(args.data_root.iterdir()):
-        if not (d / "dataset_dict.json").is_file() and not (d / "train").is_dir():
-            continue
-        if not d.name.startswith("H"):
-            continue
-        H = int(d.name.split("_")[0][1:])
-        if args.horizons and H not in args.horizons:
-            continue
-        cells.append((d.name, H))
-    if not cells:
-        raise SystemExit(f"no corpus cells under {args.data_root}")
-    logger.info("scoring %d cells at depths 1..%d", len(cells),
-                args.coe_eval_depth)
+    shards = [d.name for d in sorted(args.data_root.iterdir())
+              if d.name.startswith("phi")
+              and ((d / "dataset_dict.json").is_file() or (d / "train").is_dir())]
+    if not shards:
+        raise SystemExit(
+            f"no corpus shards under {args.data_root} (expected directories "
+            f"named phi<level>_sh<level>_gp<level>_s<k>)")
+
+    views_root = args.views_root or (args.data_root / "views")
+    cells = make_views(args.data_root, views_root, shards, args.context,
+                       args.horizons, force=args.force_views)
+    logger.info("scoring %d shards x %d horizons at depths 1..%d",
+                len(shards), len(args.horizons), args.coe_eval_depth)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    cfg_path = write_config(args.data_root, cells, args.out / "benchmark.yaml")
+    cfg_path = write_config(views_root, cells, args.out / "benchmark.yaml")
+    (args.out / "protocol.json").write_text(json.dumps({
+        "context": args.context, "horizons": list(args.horizons),
+        "anchor": ANCHOR, "series_length": SERIES_LENGTH,
+        "context_window": [ANCHOR - args.context, ANCHOR],
+        "data_root": str(args.data_root), "views_root": str(views_root),
+        "coe_eval_depth": args.coe_eval_depth,
+    }, indent=1))
 
     add_repo_to_path(args.repo)
     # Belt and braces: the fev adapter gates its depth sweep on this, and a
