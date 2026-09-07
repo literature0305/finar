@@ -1,2882 +1,3458 @@
-datasets_root: /group-volume/ts-dataset/finar_exp001
+datasets_root: /group-volume/ts-dataset/finar_exp001/views
 datasets:
-- name: H1024_phihigh_rhohigh_s00
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s03
+- name: phihigh_shall_gpfull_s00_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s04
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s07
+- name: phihigh_shall_gpfull_s01_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s08
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s11
+- name: phihigh_shall_gpfull_s02_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s12
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhohigh_s15
+- name: phihigh_shall_gpfull_s03_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rholow_s00
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rholow_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rholow_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rholow_s03
+- name: phihigh_shall_gpfull_s04_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rholow_s04
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rholow_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rholow_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rholow_s07
+- name: phihigh_shall_gpfull_s05_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rholow_s08
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rholow_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rholow_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rholow_s11
+- name: phihigh_shall_gpfull_s06_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rholow_s12
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rholow_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rholow_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rholow_s15
+- name: phihigh_shall_gpfull_s07_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s00
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s03
+- name: phihigh_shall_gphalf_s00_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s04
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s07
+- name: phihigh_shall_gphalf_s01_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s08
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s11
+- name: phihigh_shall_gphalf_s02_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s12
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phihigh_rhomid_s15
+- name: phihigh_shall_gphalf_s03_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_philow_rhohigh_s00
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rhohigh_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s03
+- name: phihigh_shall_gphalf_s04_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_philow_rhohigh_s04
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shall_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s05
+- name: phihigh_shall_gphalf_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s06
+- name: phihigh_shall_gphalf_s06_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shall_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s07
+- name: phihigh_shall_gphalf_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shall_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s08
+- name: phihigh_shall_gpno_s00_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shall_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhohigh_s09
+- name: phihigh_shall_gpno_s01_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s10
+- name: phihigh_shall_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s02_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s11
+- name: phihigh_shall_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s03_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s12
+- name: phihigh_shall_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s04_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s13
+- name: phihigh_shall_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s14
+- name: phihigh_shall_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s06_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shall_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shall_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhohigh_s15
+- name: phihigh_shall_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shall_gpno_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rholow_s00
+- name: phihigh_shhalf_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s00_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rholow_s01
+- name: phihigh_shhalf_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s01_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s02
+- name: phihigh_shhalf_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s02_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s03
+- name: phihigh_shhalf_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s03_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s04
+- name: phihigh_shhalf_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s04_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s05
+- name: phihigh_shhalf_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s06
+- name: phihigh_shhalf_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s06_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s07
+- name: phihigh_shhalf_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpfull_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s08
+- name: phihigh_shhalf_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s00_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_philow_rholow_s09
+- name: phihigh_shhalf_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s01_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s10
+- name: phihigh_shhalf_gphalf_s02_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s11
+- name: phihigh_shhalf_gphalf_s03_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s12
+- name: phihigh_shhalf_gphalf_s04_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s13
+- name: phihigh_shhalf_gphalf_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s14
+- name: phihigh_shhalf_gphalf_s06_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rholow_s15
+- name: phihigh_shhalf_gphalf_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s00
+- name: phihigh_shhalf_gpno_s00_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s01
+- name: phihigh_shhalf_gpno_s01_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s02
+- name: phihigh_shhalf_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s02_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s03
+- name: phihigh_shhalf_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s03_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s04
+- name: phihigh_shhalf_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s04_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s05
+- name: phihigh_shhalf_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s06
+- name: phihigh_shhalf_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s06_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s07
+- name: phihigh_shhalf_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shhalf_gpno_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_philow_rhomid_s08
+- name: phihigh_shnone_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s00_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s09
+- name: phihigh_shnone_gpfull_s01_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s10
+- name: phihigh_shnone_gpfull_s02_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_philow_rhomid_s11
+- name: phihigh_shnone_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s03_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s12
+- name: phihigh_shnone_gpfull_s04_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_philow_rhomid_s13
+- name: phihigh_shnone_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s05_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_philow_rhomid_s14
+- name: phihigh_shnone_gpfull_s06_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_philow_rhomid_s15
+- name: phihigh_shnone_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shnone_gpfull_s07_c512h1024
   offset: -1024
   prediction_length: 1024
+  num_rolls: 1
+- name: phihigh_shnone_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phihigh_shnone_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
+  num_rolls: 1
+- name: phihigh_shnone_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s00
+- name: phihigh_shnone_gphalf_s00_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s03
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s04
+- name: phihigh_shnone_gphalf_s01_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s07
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s08
+- name: phihigh_shnone_gphalf_s02_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s11
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s12
+- name: phihigh_shnone_gphalf_s03_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhohigh_s15
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rholow_s00
+- name: phihigh_shnone_gphalf_s04_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rholow_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rholow_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rholow_s03
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rholow_s04
+- name: phihigh_shnone_gphalf_s05_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rholow_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rholow_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rholow_s07
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rholow_s08
+- name: phihigh_shnone_gphalf_s06_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rholow_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rholow_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rholow_s11
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rholow_s12
+- name: phihigh_shnone_gphalf_s07_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rholow_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rholow_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rholow_s15
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhomid_s00
+- name: phihigh_shnone_gpno_s00_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhomid_s01
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhomid_s02
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhomid_s03
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhomid_s04
+- name: phihigh_shnone_gpno_s01_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhomid_s05
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhomid_s06
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhomid_s07
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhomid_s08
+- name: phihigh_shnone_gpno_s02_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhomid_s09
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhomid_s10
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhomid_s11
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H1024_phimid_rhomid_s12
+- name: phihigh_shnone_gpno_s03_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H1024_phimid_rhomid_s13
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H1024_phimid_rhomid_s14
-  offset: -1024
-  prediction_length: 1024
+- name: phihigh_shnone_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H1024_phimid_rhomid_s15
+- name: phihigh_shnone_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: phihigh_shnone_gpno_s04_c512h1024
   offset: -1024
   prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s00
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s01
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s02
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s03
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s04
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s05
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s06
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s07
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s08
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s09
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s10
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s11
-  offset: -128
-  prediction_length: 128
+- name: phihigh_shnone_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhohigh_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rholow_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rholow_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rholow_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rholow_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rholow_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rholow_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rholow_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rholow_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rholow_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rholow_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rholow_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rholow_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rholow_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rholow_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rholow_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rholow_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhomid_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhomid_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhomid_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhomid_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhomid_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhomid_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhomid_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhomid_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhomid_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhomid_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhomid_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhomid_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phihigh_rhomid_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phihigh_rhomid_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phihigh_rhomid_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phihigh_rhomid_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhohigh_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhohigh_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhohigh_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhohigh_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhohigh_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhohigh_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhohigh_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhohigh_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhohigh_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhohigh_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhohigh_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhohigh_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhohigh_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhohigh_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhohigh_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhohigh_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rholow_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rholow_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rholow_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rholow_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rholow_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rholow_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rholow_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rholow_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rholow_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rholow_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rholow_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rholow_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rholow_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rholow_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rholow_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rholow_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhomid_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhomid_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhomid_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhomid_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhomid_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhomid_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhomid_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhomid_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhomid_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhomid_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhomid_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhomid_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_philow_rhomid_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_philow_rhomid_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_philow_rhomid_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_philow_rhomid_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhohigh_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhohigh_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhohigh_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhohigh_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhohigh_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhohigh_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhohigh_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhohigh_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhohigh_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhohigh_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhohigh_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhohigh_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shall_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhohigh_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhohigh_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhohigh_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhohigh_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rholow_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rholow_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rholow_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rholow_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rholow_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rholow_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rholow_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rholow_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rholow_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rholow_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rholow_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rholow_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rholow_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rholow_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rholow_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rholow_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhomid_s00
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhomid_s01
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhomid_s02
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhomid_s03
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhomid_s04
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhomid_s05
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhomid_s06
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhomid_s07
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhomid_s08
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhomid_s09
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhomid_s10
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhomid_s11
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H128_phimid_rhomid_s12
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H128_phimid_rhomid_s13
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H128_phimid_rhomid_s14
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H128_phimid_rhomid_s15
-  offset: -128
-  prediction_length: 128
+- name: philow_shhalf_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s00
+- name: philow_shhalf_gphalf_s01_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s03
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s04
+- name: philow_shhalf_gphalf_s02_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s07
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s08
+- name: philow_shhalf_gphalf_s03_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s11
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s12
+- name: philow_shhalf_gphalf_s04_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhohigh_s15
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rholow_s00
+- name: philow_shhalf_gphalf_s05_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rholow_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rholow_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rholow_s03
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rholow_s04
+- name: philow_shhalf_gphalf_s06_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rholow_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rholow_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rholow_s07
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rholow_s08
+- name: philow_shhalf_gphalf_s07_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rholow_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rholow_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rholow_s11
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rholow_s12
+- name: philow_shhalf_gpno_s00_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rholow_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rholow_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rholow_s15
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhomid_s00
+- name: philow_shhalf_gpno_s01_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhomid_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhomid_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhomid_s03
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhomid_s04
+- name: philow_shhalf_gpno_s02_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhomid_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhomid_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhomid_s07
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhomid_s08
+- name: philow_shhalf_gpno_s03_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhomid_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhomid_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhomid_s11
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phihigh_rhomid_s12
+- name: philow_shhalf_gpno_s04_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phihigh_rhomid_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phihigh_rhomid_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phihigh_rhomid_s15
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhohigh_s00
+- name: philow_shhalf_gpno_s05_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhohigh_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhohigh_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhohigh_s03
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhohigh_s04
+- name: philow_shhalf_gpno_s06_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhohigh_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhohigh_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhohigh_s07
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhohigh_s08
+- name: philow_shhalf_gpno_s07_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhohigh_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhohigh_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhohigh_s11
-  offset: -16
-  prediction_length: 16
+- name: philow_shhalf_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhohigh_s12
+- name: philow_shnone_gpfull_s00_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhohigh_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhohigh_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhohigh_s15
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rholow_s00
+- name: philow_shnone_gpfull_s01_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rholow_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rholow_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rholow_s03
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rholow_s04
+- name: philow_shnone_gpfull_s02_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rholow_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rholow_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
+  num_rolls: 1
+- name: philow_shnone_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rholow_s07
+- name: philow_shnone_gpfull_s03_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rholow_s08
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rholow_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rholow_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rholow_s11
+- name: philow_shnone_gpfull_s04_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rholow_s12
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rholow_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rholow_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rholow_s15
+- name: philow_shnone_gpfull_s05_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhomid_s00
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhomid_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhomid_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhomid_s03
+- name: philow_shnone_gpfull_s06_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhomid_s04
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhomid_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhomid_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhomid_s07
+- name: philow_shnone_gpfull_s07_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhomid_s08
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhomid_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhomid_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhomid_s11
+- name: philow_shnone_gphalf_s00_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_philow_rhomid_s12
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_philow_rhomid_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_philow_rhomid_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_philow_rhomid_s15
+- name: philow_shnone_gphalf_s01_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhohigh_s00
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhohigh_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhohigh_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhohigh_s03
+- name: philow_shnone_gphalf_s02_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhohigh_s04
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhohigh_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhohigh_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhohigh_s07
+- name: philow_shnone_gphalf_s03_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhohigh_s08
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhohigh_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhohigh_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhohigh_s11
+- name: philow_shnone_gphalf_s04_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhohigh_s12
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhohigh_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhohigh_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhohigh_s15
+- name: philow_shnone_gphalf_s05_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rholow_s00
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rholow_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rholow_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rholow_s03
+- name: philow_shnone_gphalf_s06_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rholow_s04
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rholow_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rholow_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rholow_s07
+- name: philow_shnone_gphalf_s07_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rholow_s08
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rholow_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rholow_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rholow_s11
+- name: philow_shnone_gpno_s00_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rholow_s12
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rholow_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rholow_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rholow_s15
+- name: philow_shnone_gpno_s01_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhomid_s00
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhomid_s01
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhomid_s02
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhomid_s03
+- name: philow_shnone_gpno_s02_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhomid_s04
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhomid_s05
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhomid_s06
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhomid_s07
+- name: philow_shnone_gpno_s03_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhomid_s08
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhomid_s09
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhomid_s10
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhomid_s11
+- name: philow_shnone_gpno_s04_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H16_phimid_rhomid_s12
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H16_phimid_rhomid_s13
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H16_phimid_rhomid_s14
-  offset: -16
-  prediction_length: 16
+- name: philow_shnone_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H16_phimid_rhomid_s15
+- name: philow_shnone_gpno_s05_c512h16
   offset: -16
   prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s00
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s01
+- name: philow_shnone_gpno_s05_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s02
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s03
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s04
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s05
+- name: philow_shnone_gpno_s06_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s06
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s07
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s08
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s09
+- name: philow_shnone_gpno_s07_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s10
-  offset: -256
-  prediction_length: 256
+- name: philow_shnone_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s12
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s13
+- name: phimid_shall_gpfull_s00_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhohigh_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rholow_s00
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rholow_s01
+- name: phimid_shall_gpfull_s01_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rholow_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rholow_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rholow_s04
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rholow_s05
+- name: phimid_shall_gpfull_s02_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rholow_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rholow_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rholow_s08
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rholow_s09
+- name: phimid_shall_gpfull_s03_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rholow_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
+  num_rolls: 1
+- name: phimid_shall_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phimid_shall_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rholow_s11
+- name: phimid_shall_gpfull_s04_c512h256
   offset: -256
   prediction_length: 256
+  num_rolls: 1
+- name: phimid_shall_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
+  num_rolls: 1
+- name: phimid_shall_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phimid_shall_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rholow_s12
+- name: phimid_shall_gpfull_s05_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rholow_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rholow_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rholow_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhomid_s00
+- name: phimid_shall_gpfull_s06_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhomid_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhomid_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhomid_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhomid_s04
+- name: phimid_shall_gpfull_s07_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhomid_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhomid_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhomid_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhomid_s08
+- name: phimid_shall_gphalf_s00_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhomid_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhomid_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhomid_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phihigh_rhomid_s12
+- name: phimid_shall_gphalf_s01_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phihigh_rhomid_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phihigh_rhomid_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phihigh_rhomid_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhohigh_s00
+- name: phimid_shall_gphalf_s02_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhohigh_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhohigh_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhohigh_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhohigh_s04
+- name: phimid_shall_gphalf_s03_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhohigh_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhohigh_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhohigh_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhohigh_s08
+- name: phimid_shall_gphalf_s04_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhohigh_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhohigh_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhohigh_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhohigh_s12
+- name: phimid_shall_gphalf_s05_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhohigh_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhohigh_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhohigh_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rholow_s00
+- name: phimid_shall_gphalf_s06_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rholow_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rholow_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rholow_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rholow_s04
+- name: phimid_shall_gphalf_s07_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rholow_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rholow_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rholow_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rholow_s08
+- name: phimid_shall_gpno_s00_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rholow_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rholow_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rholow_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rholow_s12
+- name: phimid_shall_gpno_s01_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rholow_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rholow_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rholow_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhomid_s00
+- name: phimid_shall_gpno_s02_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhomid_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhomid_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhomid_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhomid_s04
+- name: phimid_shall_gpno_s03_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhomid_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhomid_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhomid_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhomid_s08
+- name: phimid_shall_gpno_s04_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhomid_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhomid_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhomid_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_philow_rhomid_s12
+- name: phimid_shall_gpno_s05_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_philow_rhomid_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_philow_rhomid_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_philow_rhomid_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhohigh_s00
+- name: phimid_shall_gpno_s06_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhohigh_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhohigh_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhohigh_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhohigh_s04
+- name: phimid_shall_gpno_s07_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhohigh_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shall_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhohigh_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhohigh_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhohigh_s08
+- name: phimid_shhalf_gpfull_s00_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhohigh_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhohigh_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhohigh_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhohigh_s12
+- name: phimid_shhalf_gpfull_s01_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhohigh_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhohigh_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhohigh_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rholow_s00
+- name: phimid_shhalf_gpfull_s02_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rholow_s01
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rholow_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rholow_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rholow_s04
+- name: phimid_shhalf_gpfull_s03_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rholow_s05
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rholow_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rholow_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rholow_s08
+- name: phimid_shhalf_gpfull_s04_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rholow_s09
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rholow_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rholow_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rholow_s12
+- name: phimid_shhalf_gpfull_s05_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rholow_s13
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rholow_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rholow_s15
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s00
+- name: phimid_shhalf_gpfull_s06_c512h256
   offset: -256
   prediction_length: 256
+  num_rolls: 1
+- name: phimid_shhalf_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
+  num_rolls: 1
+- name: phimid_shhalf_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phimid_shhalf_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s01
+- name: phimid_shhalf_gpfull_s07_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhomid_s02
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhomid_s03
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhomid_s04
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s05
+- name: phimid_shhalf_gphalf_s00_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhomid_s06
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhomid_s07
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhomid_s08
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s09
+- name: phimid_shhalf_gphalf_s01_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhomid_s10
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H256_phimid_rhomid_s11
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H256_phimid_rhomid_s12
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s13
+- name: phimid_shhalf_gphalf_s02_c512h256
   offset: -256
   prediction_length: 256
   num_rolls: 1
-- name: H256_phimid_rhomid_s14
-  offset: -256
-  prediction_length: 256
+- name: phimid_shhalf_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
+  num_rolls: 1
+- name: phimid_shhalf_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
+  num_rolls: 1
+- name: phimid_shhalf_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H256_phimid_rhomid_s15
+- name: phimid_shhalf_gphalf_s03_c512h256
   offset: -256
   prediction_length: 256
+  num_rolls: 1
+- name: phimid_shhalf_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhohigh_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rholow_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rholow_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rholow_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rholow_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rholow_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rholow_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rholow_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rholow_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rholow_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rholow_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rholow_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rholow_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rholow_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rholow_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rholow_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rholow_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhomid_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhomid_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhomid_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhomid_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhomid_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhomid_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhomid_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhomid_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhomid_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhomid_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhomid_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhomid_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phihigh_rhomid_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phihigh_rhomid_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phihigh_rhomid_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phihigh_rhomid_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shhalf_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhohigh_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhohigh_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhohigh_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhohigh_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhohigh_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhohigh_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhohigh_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhohigh_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhohigh_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhohigh_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhohigh_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhohigh_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhohigh_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhohigh_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhohigh_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhohigh_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rholow_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rholow_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rholow_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rholow_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rholow_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rholow_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rholow_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rholow_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rholow_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rholow_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rholow_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rholow_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rholow_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rholow_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rholow_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rholow_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpfull_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhomid_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhomid_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhomid_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhomid_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhomid_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhomid_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhomid_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhomid_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhomid_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhomid_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhomid_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhomid_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_philow_rhomid_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_philow_rhomid_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_philow_rhomid_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_philow_rhomid_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhohigh_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhohigh_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhohigh_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhohigh_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhohigh_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhohigh_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhohigh_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhohigh_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhohigh_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhohigh_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhohigh_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhohigh_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhohigh_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhohigh_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhohigh_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhohigh_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gphalf_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rholow_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s00_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rholow_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s00_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rholow_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s00_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rholow_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s00_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rholow_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s01_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rholow_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s01_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rholow_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s01_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rholow_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s01_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rholow_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s02_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rholow_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s02_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rholow_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s02_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rholow_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s02_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rholow_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s03_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rholow_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s03_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rholow_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s03_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rholow_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s03_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhomid_s00
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s04_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhomid_s01
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s04_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhomid_s02
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s04_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhomid_s03
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s04_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhomid_s04
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s05_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhomid_s05
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s05_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhomid_s06
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s05_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhomid_s07
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s05_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhomid_s08
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s06_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhomid_s09
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s06_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhomid_s10
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s06_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhomid_s11
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s06_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
-- name: H512_phimid_rhomid_s12
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s07_c512h16
+  offset: -16
+  prediction_length: 16
   num_rolls: 1
-- name: H512_phimid_rhomid_s13
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s07_c512h64
+  offset: -64
+  prediction_length: 64
   num_rolls: 1
-- name: H512_phimid_rhomid_s14
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s07_c512h256
+  offset: -256
+  prediction_length: 256
   num_rolls: 1
-- name: H512_phimid_rhomid_s15
-  offset: -512
-  prediction_length: 512
+- name: phimid_shnone_gpno_s07_c512h1024
+  offset: -1024
+  prediction_length: 1024
   num_rolls: 1
