@@ -29,6 +29,14 @@ probability mass into a dataset that can never be drawn from, so the realised
 mixture would not be the configured one. The dropped datasets and the shift in
 each survivor's share are both reported.
 
+A DATASET THAT CANNOT BE READ IS ALSO DROPPED, not fatal. exp003 only needs
+enough training-distribution rows to see whether the second pass regularises,
+so neither the exact configured mixture nor the exact --n matters; one corpus
+the installed datasets cannot open must not stop the build. Every such drop is
+a WARNING naming the entry and its exception, the total weight lost is stated
+as a percentage, and both land in `manifest.json` — the one thing this must
+never do is drop an entry quietly.
+
 =============================================================================
 WHAT COMES OUT
 =============================================================================
@@ -305,15 +313,22 @@ def draw(mixture, min_length: int, n_draw: int, seed: int):
         try:
             total, idx = eligible_rows(path, min_length)
         except Exception as e:
-            # LOUD. Swallowing this silently dropped the two corpora carrying
-            # 93% of the sampling weight — an ArrowInvalid from a since-removed
-            # combine_chunks() — and the build happily produced a "training
-            # subset" drawn from the remaining 7%. A mixture that cannot be
-            # read as configured is not a mixture worth sampling.
-            raise SystemExit(
-                f"cannot read {path} (share "
-                f"{w / sum(x[1] for x in mixture):.4f} of the mixture): "
-                f"{type(e).__name__}: {e}") from e
+            # LOUD BUT NOT FATAL. This corpus exists to read a regularisation
+            # trend off training-distribution data; it does not have to be the
+            # configured mixture exactly, so one unreadable entry drops out
+            # rather than stopping the build. What it must not do is drop out
+            # QUIETLY — an earlier version swallowed the same class of error
+            # and produced a "training subset" drawn from the 7% of the weight
+            # that happened to still load. Every drop is warned about here,
+            # totalled as a share of the configured weight in `main`, and
+            # recorded with its exception in the manifest.
+            logger.warning("SKIPPING %s (%.4f of the mixture) — cannot read "
+                           "it: %s: %s", Path(path).name,
+                           w / sum(x[1] for x in mixture), type(e).__name__,
+                           str(e).replace("\n", " ")[:200])
+            report.append({"path": path, "status": "unreadable", "weight": w,
+                           "error": f"{type(e).__name__}: {e}"[:300]})
+            continue
         if len(idx) == 0:
             report.append({"path": path, "status": "no row >= min_length",
                            "weight": w, "n_rows": total})
@@ -387,8 +402,56 @@ def estimate(plan) -> dict:
             "per_row": per_row}
 
 
+def _normalise_part(path, idx, target_features, freq_default: str):
+    """One drawn dataset, read and rewritten into the common schema."""
+    # with_format(None): hand back plain python whatever `state.json` asks
+    # for, so `widen` below sees lists rather than numpy arrays.
+    sub = load_split(path).with_format(None).select(idx.tolist())
+    cols = sub.column_names
+    tgt = "target" if "target" in cols else next(
+        c for c in cols if c not in ("item_id", "start", "freq", "id",
+                                     "timestamp"))
+    # Short strings: safe to read as a column, unlike the target.
+    starts = ([str(x) for x in sub["start"]] if "start" in cols
+              else ["2020-01-01T00:00:00"] * len(sub))
+    freqs = ([str(x) for x in sub["freq"]] if "freq" in cols
+             else [freq_default] * len(sub))
+
+    def widen(batch, _t=tgt):
+        out = []
+        for v in batch[_t]:
+            # A 2-D row's first element is itself a sequence; a 1-D row's is a
+            # number. Wrapping the 1-D case keeps one schema.
+            #
+            # `hasattr(..., "__len__")`, NOT isinstance(list | tuple): a corpus
+            # whose `state.json` carries a non-python `_format_type` hands back
+            # rows of numpy arrays, which are sequences that fail the
+            # isinstance test. Such a row was wrapped a SECOND time, and the
+            # extra level surfaced far from here, as arrow refusing the pinned
+            # schema:
+            #
+            #     TypeError: Couldn't cast array of type
+            #     list<item: float> to float
+            #
+            # `with_format(None)` already forces python objects, so this is the
+            # second of two guards rather than the only one.
+            out.append(v if (len(v) and hasattr(v[0], "__len__")) else [v])
+        return {"target": out}
+
+    sub = sub.map(widen, batched=True, batch_size=BATCH,
+                  writer_batch_size=BATCH, remove_columns=cols,
+                  features=target_features,
+                  desc=Path(path).name[:32], load_from_cache_file=False)
+    name = Path(path).name
+    sub = sub.add_column("item_id", [f"{name}__{i}" for i in idx.tolist()])
+    sub = sub.add_column("start", starts)
+    return sub.add_column("freq", freqs)
+
+
 def materialise(plan, out_dir: Path, freq_default: str = "h"):
     """Concatenate the drawn rows into one HF dataset, STAYING IN ARROW.
+
+    Returns ``(n_written, dropped)``.
 
     The target column is never converted as a whole. `select` is lazy, and the
     schema normalisation runs through `map(batched=True, batch_size=BATCH)`, so
@@ -415,47 +478,36 @@ def materialise(plan, out_dir: Path, freq_default: str = "h"):
     eo_pipeline and in train_chronos2's task builder), and because it can only
     make `estimate`'s output figure — computed from the SOURCE arrow bytes —
     conservative rather than optimistic.
+
+    A dataset whose rows will not normalise is DROPPED with a warning, on the
+    same bargain as the unreadable-entry branch of `draw`: this corpus only has
+    to be enough training-distribution data to read a regularisation trend off,
+    so one refractory entry must not take the build down. It is returned to the
+    caller rather than only logged, so the manifest records what was lost.
     """
     import datasets as hf
 
     target_features = hf.Features(
         {"target": hf.Sequence(hf.Sequence(hf.Value("float32")))})
-    parts = []
+    parts, dropped = [], []
     for path, idx in plan.items():
-        sub = load_split(path).select(idx.tolist())
-        cols = sub.column_names
-        tgt = "target" if "target" in cols else next(
-            c for c in cols if c not in ("item_id", "start", "freq", "id",
-                                         "timestamp"))
-        # Short strings: safe to read as a column, unlike the target.
-        starts = ([str(x) for x in sub["start"]] if "start" in cols
-                  else ["2020-01-01T00:00:00"] * len(sub))
-        freqs = ([str(x) for x in sub["freq"]] if "freq" in cols
-                 else [freq_default] * len(sub))
+        try:
+            parts.append(_normalise_part(path, idx, target_features,
+                                         freq_default))
+        except Exception as e:
+            dropped.append({"path": path, "n_planned": int(len(idx)),
+                            "error": f"{type(e).__name__}: {e}"[:300]})
+            logger.warning("SKIPPING %s — its rows will not normalise: %s: %s",
+                           Path(path).name, type(e).__name__,
+                           str(e).replace("\n", " ")[:200])
 
-        def widen(batch, _t=tgt):
-            out = []
-            for v in batch[_t]:
-                # A 2-D row's first element is itself a sequence; a 1-D row's
-                # is a number. Wrapping the 1-D case keeps one schema.
-                out.append(v if (len(v) and isinstance(v[0], (list, tuple)))
-                           else [v])
-            return {"target": out}
-
-        sub = sub.map(widen, batched=True, batch_size=BATCH,
-                      writer_batch_size=BATCH, remove_columns=cols,
-                      features=target_features,
-                      desc=Path(path).name[:32], load_from_cache_file=False)
-        name = Path(path).name
-        sub = sub.add_column("item_id", [f"{name}__{i}" for i in idx.tolist()])
-        sub = sub.add_column("start", starts)
-        sub = sub.add_column("freq", freqs)
-        parts.append(sub)
-
+    if not parts:
+        raise SystemExit("every drawn dataset failed to normalise — "
+                         "nothing to write")
     merged = hf.concatenate_datasets(parts)
     out_dir.mkdir(parents=True, exist_ok=True)
     hf.DatasetDict({"train": merged}).save_to_disk(str(out_dir))
-    return len(merged)
+    return len(merged), dropped
 
 
 def link_horizons(base: Path, horizons=HORIZONS) -> list[Path]:
@@ -515,6 +567,17 @@ def main() -> int:
     if skipped:
         logger.info("  skipped %d entr(ies): %s", len(skipped),
                     ", ".join(sorted({r["status"].split(":")[0] for r in skipped})))
+    # The dropped weight is the one number that says how far the realised
+    # mixture is from the configured one, so it is stated as a percentage
+    # rather than left to be reconstructed from the per-entry report.
+    lost = [r for r in report if r["status"] in
+            ("missing", "unreadable", "no row >= min_length")]
+    if lost:
+        share = sum(r["weight"] for r in lost) / sum(w for _, w in mixture)
+        logger.warning("%d entr(ies) dropped, carrying %.1f%% of the "
+                       "configured sampling weight — the corpus is the "
+                       "surviving %.1f%%, renormalised",
+                       len(lost), 100 * share, 100 * (1 - share))
     if drawn < args.n:
         logger.warning("only %d of the requested %d rows are available at "
                        "min-length %d", drawn, args.n, args.min_length)
@@ -542,13 +605,17 @@ def main() -> int:
         return 0
 
     out = args.out_root / args.name
-    n = materialise(plan, out)
+    n, unwritable = materialise(plan, out)
     links = link_horizons(out)
     (out / "manifest.json").write_text(json.dumps({
         "source_config": str(args.config), "seed": args.seed,
         "n_requested": args.n, "n_written": n, "min_length": args.min_length,
         "horizons": list(HORIZONS), "entries": report,
+        "dropped_at_materialise": unwritable,
     }, indent=1, default=str))
+    if n < drawn:
+        logger.warning("wrote %d of the %d drawn rows; %d entr(ies) were "
+                       "dropped while normalising", n, drawn, len(unwritable))
     logger.info("wrote %d series to %s", n, out)
     logger.info("horizon links: %s", ", ".join(x.name for x in links))
     return 0
