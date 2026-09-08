@@ -189,7 +189,16 @@ def feedback_scenario(pipeline, scenario: str):
             if hasattr(self.model, _ATTR):
                 delattr(self.model, _ATTR)
 
-    def patched_write(self, med, i, value_channel, validity, update_mask):
+    # BOUND to the original's signature, not spelled out. `_coe_write_back`
+    # grew a `loc_scale` parameter, and a wrapper that names its arguments
+    # positionally fails with "takes 6 positional arguments but 7 were given"
+    # — on every task, at eval time, after the model is already loaded.
+    # Binding means the two parameters this needs are found by NAME and every
+    # other one is passed straight through, whatever they become.
+    import inspect as _inspect
+    _write_sig = _inspect.signature(orig_write)   # bound: no `self`
+
+    def patched_write(self, *args, **kwargs):
         """The stock write-back, undone for the rows this scenario suppresses.
 
         Restores ALL THREE of what the write-back produces — see WHAT "NOT FED
@@ -198,11 +207,13 @@ def feedback_scenario(pipeline, scenario: str):
         would add a residual computed against a zero input to a prediction the
         variate was never shown.
         """
-        new_value, new_mask, new_acc = orig_write(
-            med, i, value_channel, validity, update_mask)
+        new_value, new_mask, new_acc = orig_write(*args, **kwargs)
         allow = getattr(self, _ATTR, None)
         if allow is None:
             return new_value, new_mask, new_acc
+        bound = _write_sig.bind(*args, **kwargs)
+        value_channel = bound.arguments["value_channel"]
+        validity = bound.arguments["validity"]
         if allow.shape[0] != new_value.shape[0]:
             # Loud, because the alternative is suppressing the WRONG variates:
             # the roles are positional, so a length mismatch means the rows

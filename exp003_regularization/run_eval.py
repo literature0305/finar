@@ -51,21 +51,64 @@ def add_repo_to_path(repo: Path) -> None:
             sys.path.insert(0, p)
 
 
-def checkpoint_depths(model_path: str) -> tuple[int | None, int | None]:
-    """``(coe_train_depth_max, coe_eval_depth)``, or ``(None, None)``.
+def warmup_depth(eo: dict) -> int:
+    """How deep the grad-free warm-up runs before the scored chain.
+
+    `init_from_repeat_prediction` ALONE does not mean the model was trained to
+    refine: it is only the switch, and the depth lives in
+    `init_warmup_depth_max`. tsm-trainer's own config documents the
+    interaction, and the default is the trap —
+
+        null (default)  follow coe_train_depth_max, and stay INERT when that
+                        is 1
+        0               no warm-up, without touching the switch
+        n >= 1          draw from [0, n] whatever coe_train_depth_max is
+
+    — so `coe_train_depth_max: 1` with `init_warmup_depth_max: null` leaves the
+    switch reading `true` while the warm-up does nothing at all.
+    """
+    # `coe_bottleneck` is part of the gate, not a separate concern: without the
+    # bottleneck the passes chain in hidden space and the warm-up never runs at
+    # all. tsm-trainer folds all three conditions into
+    # `AEDForecastingConfig.warmup_active`, whose docstring records that the
+    # model and the config had already drifted apart once by writing the switch
+    # and the bottleneck out at two sites — and that a `coe_bottleneck: false`
+    # run was consequently told its eval depth was covered by a warm-up that
+    # never happened. Omitting it here would admit exactly that checkpoint.
+    if not (eo.get("init_from_repeat_prediction") and eo.get("coe_bottleneck")):
+        return 0
+    d = eo.get("init_warmup_depth_max")
+    if d is None:
+        k = eo.get("coe_train_depth_max")
+        k = k if isinstance(k, int) else 1
+        return 0 if k <= 1 else k          # inert at K=1, by tsm-trainer's rule
+    return int(d) if isinstance(d, int) and d > 0 else 0
+
+
+def checkpoint_depths(model_path: str) -> tuple[int | None, int | None, dict]:
+    """``(trained depth, coe_eval_depth, eo_config)``, or ``(None, None, {})``.
 
     None means "not a local EO v4 checkpoint" — an HF id like
     `autogluon/chronos-2` is a legitimate baseline here, so this has to
     distinguish that from a COE model with nothing to sweep.
+
+    THE TRAINED DEPTH IS NOT `coe_train_depth_max`. A checkpoint trained at
+    K=1 with a grad-free warm-up of 1 has been trained on an input one pass
+    already refined, which is what makes depth 2 a depth it has seen; testing
+    K alone refuses it by mistake. See `warmup_depth`.
     """
     cfg = Path(model_path) / "config.json"
     if not cfg.is_file():
-        return None, None
+        return None, None, {}
     try:
         eo = json.loads(cfg.read_text()).get("eo_config") or {}
     except Exception:
-        return None, None
-    return eo.get("coe_train_depth_max"), eo.get("coe_eval_depth")
+        return None, None, {}
+    if not eo:
+        return None, None, {}
+    k = eo.get("coe_train_depth_max")
+    k = k if isinstance(k, int) and k >= 1 else 1
+    return k + warmup_depth(eo), eo.get("coe_eval_depth"), eo
 
 
 def check_corpus(config_path: Path) -> None:
@@ -106,7 +149,7 @@ def main() -> int:
                         datefmt="%H:%M:%S")
     check_corpus(args.config)
 
-    train_max, ckpt_eval = checkpoint_depths(args.model_path)
+    train_max, ckpt_eval, eo_cfg = checkpoint_depths(args.model_path)
     if train_max is None:
         if not args.allow_shallow:
             raise SystemExit(
@@ -115,11 +158,15 @@ def main() -> int:
         logger.warning("no eo_config at %s — scoring as a non-COE baseline",
                        args.model_path)
     else:
-        logger.info("checkpoint: coe_train_depth_max=%s coe_eval_depth=%s",
-                    train_max, ckpt_eval)
+        logger.info("checkpoint: trained depth=%s (coe_train_depth_max=%s + "
+                    "grad-free warm-up %s) coe_eval_depth=%s", train_max,
+                    eo_cfg.get("coe_train_depth_max"), warmup_depth(eo_cfg),
+                    ckpt_eval)
         if train_max < 2 and not args.allow_shallow:
             raise SystemExit(
-                f"coe_train_depth_max={train_max} < 2: this checkpoint was not "
+                f"trained depth {train_max} < 2 (coe_train_depth_max="
+                f"{eo_cfg.get('coe_train_depth_max')!r}, grad-free warm-up "
+                f"{warmup_depth(eo_cfg)}): this checkpoint was not "
                 f"trained to refine, so iteration 2 would be extrapolation "
                 f"rather than the refinement exp003 is analysing. Use a K>=2 "
                 f"checkpoint, or --allow-shallow to record that arm anyway.")
