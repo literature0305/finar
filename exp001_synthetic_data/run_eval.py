@@ -184,7 +184,7 @@ def make_views(data_root: Path, views_root: Path, shards: list[str],
             f"--context {context} does not fit before the horizon anchor at "
             f"{anchor}, which leaves {SERIES_LENGTH - anchor} steps for the "
             f"longest horizon of the sweep")
-    made = []
+    made, written = [], 0
     for shard in shards:
         src = None
         for H in horizons:
@@ -193,6 +193,7 @@ def make_views(data_root: Path, views_root: Path, shards: list[str],
             made.append((name, H))
             if dest.is_dir() and not force:
                 continue
+            written += 1
             if src is None:
                 ds = hf.load_from_disk(str(data_root / shard))
                 src = ds["train"] if hasattr(ds, "keys") else ds
@@ -208,9 +209,13 @@ def make_views(data_root: Path, views_root: Path, shards: list[str],
             hf.DatasetDict({"train": hf.Dataset.from_dict(
                 {**cols, "target": [x.tolist() for x in cut]},
                 features=target_features())}).save_to_disk(str(dest))
-    logger.info("views: %d slices of %d shards under %s (context %d, "
-                "window [%d, %d) + horizon)",
-                len(made), len(shards), views_root, context, lo, ANCHOR)
+    # Says how many were WRITTEN, not just how many exist: the old message
+    # quoted the total either way, so a run that reused every slice looked
+    # exactly like one that regenerated the corpus.
+    logger.info("views: %d of %d slices written (%d reused) under %s "
+                "— context %d, window [%d, %d) + horizon",
+                written, len(made), len(made) - written, views_root,
+                context, lo, anchor)
     return made
 
 
