@@ -150,6 +150,50 @@ def resolve_data(explicit, default: Path, what: str):
     return None
 
 
+def require_capture_route(benchmark: str, forecaster) -> None:
+    """Refuse a forecaster the fev capture seam cannot reach.
+
+    fev-bench picks ONE of three input-construction modes per run
+    (`fev_bench.py`, `mode = ...`), and only `covariate-aware` calls
+    `_window_to_task_inputs` — which is the seam `capture_truth` hooks. The
+    other two hand the model plain contexts, so the store is never filled, every
+    lookup misses, and the run is thrown away by the `truth_hits == 0` guard
+    after having done all of its work.
+
+        aed-pairwise                 forecaster.supports_pairwise wins the
+                                     priority test, so use_covariates is False
+        independent (group-id …)     supports_covariates is False — for EO that
+                                     is `config.group_attention` reduced to
+                                     false, so the checkpoint has no group
+                                     attention and there is no cross-variate
+                                     path for the truth to be fed into anyway
+        covariate-aware              the only mode this experiment works in
+
+    Checked per benchmark because only fev routes this way; GIFT-Eval's capture
+    patches `gift_eval.data.Dataset` and is unaffected.
+    """
+    if not benchmark.startswith("fev"):
+        return
+    pairwise = bool(getattr(forecaster, "supports_pairwise", False))
+    covariates = bool(getattr(forecaster, "supports_covariates", False))
+    if covariates and not pairwise:
+        return
+    mode = "aed-pairwise" if pairwise else "independent (group-id ignored)"
+    why = ("supports_pairwise=True takes priority over the covariate-aware "
+           "path" if pairwise else
+           "supports_covariates=False — for an EO checkpoint that is "
+           "config.group_attention reducing to false, which also means the "
+           "checkpoint has no cross-variate path to feed the truth into")
+    raise SystemExit(
+        f"{forecaster.name!r} would make fev-bench run in {mode!r} mode, not "
+        f"'covariate-aware': {why}.\n"
+        f"Only 'covariate-aware' calls _window_to_task_inputs, which is where "
+        f"the truth is captured — every lookup would miss and the run would be "
+        f"refused after doing all of its work.\n"
+        f"Check the checkpoint's group_attention, or run with --benchmarks "
+        f"gift, whose capture does not go through this path.")
+
+
 def make_adapter(benchmark: str, args):
     """The stock adapter, with variates fed as one group.
 
@@ -257,6 +301,7 @@ def main() -> int:
                 eo_max_n_variate=None, rolling_horizon=None,
                 rolling_quantiles=None, coe_eval_depth=args.coe_eval_depth))
             adapter, name = make_adapter(benchmark, args)
+            require_capture_route(benchmark, forecaster)
 
             store = TruthStore()
             t0 = time.time()

@@ -123,6 +123,27 @@ the patch, one benchmark into an alpha sweep, minutes after loading — and it
 fired for the $\alpha = 0$ arm too, which does no blending and looks like it
 should be immune.
 
+### The fev arm needs `covariate-aware` mode
+
+fev-bench chooses one of three input-construction modes per run, and only
+**`covariate-aware`** calls `_window_to_task_inputs` — the seam `capture_truth`
+hooks. The other two hand the model plain contexts, so nothing is captured,
+every lookup misses, and the `truth_hits == 0` guard discards the run *after*
+it has done all of its work:
+
+| mode | when | capture |
+|---|---|---|
+| `aed-pairwise` | `supports_pairwise` is True — it wins the priority test | ✗ |
+| `independent (group-id ignored)` | `supports_covariates` is False; for EO that is `config.group_attention` reducing to false | ✗ |
+| `covariate-aware` | otherwise | ✓ |
+
+`run_eval.py` now refuses such a checkpoint **before** the benchmark runs and
+names which mode it would have taken. The second row is worth reading twice: a
+checkpoint without group attention has no cross-variate path for a fed-back
+truth to travel along, so the arm would be undefined for it even if the capture
+did fire. GIFT-Eval is exempt — its capture patches `gift_eval.data.Dataset`
+and does not go through this path, so `--benchmarks gift` still runs.
+
 ### What comes out
 
 | path | contents |
