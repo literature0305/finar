@@ -113,8 +113,21 @@ def run_depth(root: Path) -> int:
 def alpha_iteration_tables(loaded: dict, depth: int) -> pd.DataFrame:
     """MASE and task-level win rate for every (benchmark, alpha, iteration).
 
-    Long format, one row per cell, so the two heatmaps and the csv are the same
-    numbers.
+    ONE TASK POPULATION FOR THE WHOLE SURFACE, per benchmark. Averaging each
+    cell over whatever happened to be finite in it makes the alpha and iteration
+    axes compare different task sets — the alpha=1 column could be a mean over
+    tasks the alpha=0 column never scored, and the difference would read as an
+    effect. The population here is the tasks present for EVERY alpha and finite
+    at EVERY iteration, so `n_tasks` describes every cell and the surface is
+    internally comparable. It is also, for the same reason, not necessarily the
+    population `build()` reports on: that one restricts to two depths, this one
+    to all of them. The two tables answer different questions and the counts say
+    so.
+
+    EVERY DEPTH MUST BE PRESENT. `manifest.json` records the depth the run was
+    ASKED for, not proof that the adapter emitted it; an interrupted run would
+    otherwise produce a sparse surface that looks like a valid experiment with
+    fewer columns.
 
     THE WIN RATE IS OVER TASKS, NOT ITEMS, and the column says so. Per-item
     would be the better statistic and is not available: fev-bench scores its
@@ -122,38 +135,65 @@ def alpha_iteration_tables(loaded: dict, depth: int) -> pd.DataFrame:
     `score_and_plot_repeats`, the two share no seam, and the second discards
     `mase_per_item` before returning. Reaching item level means two hooks into
     read-only internals, one of which that file already documents as fragile.
-    The task denominator is 26 (fev multivariate) to 97 (GIFT-Eval), which is
-    small but not decorative.
 
     `blended_MASE` is `(1 - alpha) * MASE`, the MASE of the intermediate the
-    next pass is handed. It is an ALGEBRAIC IDENTITY, not a measurement:
-    the blend is `(1-a)*p + a*y` and MASE is `mean|y - .|/s`, so
-    `mean|y - ((1-a)p + a*y)| = (1-a)*mean|y - p|` exactly. It is reported
-    because it is the quantity the second pass actually sees, and it cannot
-    fail — a check of whether the blend reached the model is `truth_hits`
-    in truth.json, not this column.
+    next pass is handed. It is an ALGEBRAIC IDENTITY, not a measurement: the
+    blend is `(1-a)*p + a*y` and MASE is `mean|y - .|/s`, so
+    `mean|y - ((1-a)p + a*y)| = (1-a)*mean|y - p|` exactly, for `a` in [0, 1].
+    It cannot fail — a check of whether the blend reached the model is
+    `truth_hits` in truth.json, not this column.
     """
     rows = []
     for bench, runs in loaded.items():
+        percols, missing = {}, []
         for alpha, df in sorted(runs.items()):
-            cols = depth_columns(df)
-            base = cols.get(1, {}).get("MASE")
-            if base is None:
-                continue
-            b = pd.to_numeric(df[base], errors="coerce").to_numpy(float)
+            percols[alpha] = depth_columns(df)
+            miss = [i for i in range(1, depth + 1)
+                    if not percols[alpha].get(i, {}).get("MASE")]
+            if miss:
+                missing.append(f"alpha={alpha:g} missing depths {miss}")
+        if missing:
+            raise SystemExit(
+                f"{bench}: the run was scored to depth {depth} but its csvs do "
+                f"not carry every depth — " + "; ".join(missing) + ". A sparse "
+                f"surface would look like a valid experiment with fewer "
+                f"columns, so it is refused.")
+
+        idx = None
+        for df in runs.values():
+            idx = df.index if idx is None else idx.intersection(df.index)
+        ok = pd.Series(True, index=idx)
+        for alpha, df in runs.items():
+            for i in range(1, depth + 1):
+                v = pd.to_numeric(df.loc[idx, percols[alpha][i]["MASE"]],
+                                  errors="coerce")
+                ok &= np.isfinite(v)
+        keep = ok[ok].index
+        if not len(keep):
+            raise SystemExit(
+                f"{bench}: no task is finite at every one of depths "
+                f"1..{depth} for every alpha, so there is no population the "
+                f"surface could be computed on")
+        if len(keep) < len(idx):
+            logger.warning(
+                "  %s: %d of %d tasks dropped — not finite at every depth for "
+                "every alpha", len(idx) - len(keep), len(idx), bench)
+
+        for alpha, df in sorted(runs.items()):
+            b = pd.to_numeric(df.loc[keep, percols[alpha][1]["MASE"]],
+                              errors="coerce").to_numpy(float)
             for it in range(1, depth + 1):
-                c = cols.get(it, {}).get("MASE")
-                if c is None:
-                    continue
-                v = pd.to_numeric(df[c], errors="coerce").to_numpy(float)
-                mase = float(np.nanmean(v)) if np.isfinite(v).any() else np.nan
+                v = pd.to_numeric(df.loc[keep, percols[alpha][it]["MASE"]],
+                                  errors="coerce").to_numpy(float)
+                mase = float(v.mean())
                 rows.append({
                     "benchmark": bench, "alpha": alpha, "iteration": it,
                     "MASE": mase,
                     "blended_MASE": (1.0 - alpha) * mase,
-                    "win_rate_tasks_vs_iter1": (
-                        1.0 if it == 1 else _win_rate(b, v)),
-                    "n_tasks": int((np.isfinite(b) & np.isfinite(v)).sum()),
+                    # 0.5, not 1.0, at it == 1: iteration 1 against itself ties
+                    # on every task and `_win_rate` scores ties at a half.
+                    "win_rate_tasks_vs_iter1": _win_rate(b, v),
+                    "n_tasks": len(keep),
                 })
     return pd.DataFrame(rows)
 
@@ -175,8 +215,10 @@ def alpha_iteration_heatmaps(t: pd.DataFrame, dest: Path) -> None:
         sub = t[t["benchmark"] == bench]
         for col, (value, cmap, title) in enumerate(panels):
             ax = axes[row][col]
-            piv = sub.pivot_table(index="alpha", columns="iteration",
-                                  values=value, aggfunc="mean")
+            # pivot, not pivot_table: one row per (alpha, iteration) is the
+            # contract above, so a duplicate must raise here rather than be
+            # quietly averaged into something that looks fine.
+            piv = sub.pivot(index="alpha", columns="iteration", values=value)
             kw = {"vmin": 0.0, "vmax": 1.0} if col else {}
             im = ax.imshow(piv.values, aspect="auto", cmap=cmap, **kw)
             ax.set_xticks(range(len(piv.columns)))

@@ -193,6 +193,20 @@ other fourteen.
 (benchmark, alpha, iteration): MASE, a win rate against iteration 1, and
 `blended_MASE`.
 
+**One task population for the whole surface.** The cells are computed on the
+tasks present for every alpha and finite at every iteration, so `n_tasks`
+describes every cell and the two axes compare the same series. Averaging each
+cell over whatever happened to be finite in it would let the alpha=1 column be a
+mean over tasks the alpha=0 column never scored, and that difference would read
+as an effect. For the same reason this population is not necessarily the one
+`exp004_table.csv` reports: that table restricts to two depths, this one to all
+of them.
+
+A missing depth is **refused**, not skipped: `manifest.json` records the depth
+the run was *asked* for, not proof the adapter emitted it, so an interrupted run
+would otherwise yield a sparse surface that looks like a valid experiment with
+fewer columns.
+
 **The win rate is over TASKS, not items,** and the column name says so
 (`win_rate_tasks_vs_iter1`). Per-item would be the better statistic and is not
 reachable cheaply: fev-bench scores its repeat sets through
@@ -209,7 +223,9 @@ MASE is $\overline{|y - \cdot|}/s$,
 $$\overline{|y - ((1-\alpha)p + \alpha y)|} = (1-\alpha)\,\overline{|y - p|}$$
 
 so the column equals $(1-\alpha) \times$ `MASE` exactly, by construction, and
-cannot fail. It is reported because it is what pass $n+1$ actually sees.
+cannot fail. `--alpha` is validated to $[0, 1]$ at the point of entry — it is
+the share of the truth in a *convex* blend, and outside that interval the
+identity would report a negative MASE. It is reported because it is what pass $n+1$ actually sees.
 Whether the blend reached the model at all is answered by `truth_hits` in
 `truth.json`, never by this column.
 

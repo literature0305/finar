@@ -217,7 +217,8 @@ def main() -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     p.add_argument("--alpha", type=float, nargs="+", default=list(DEFAULT_ALPHAS),
-                   help="blend weights to sweep (default: 0.0 0.5 1.0)")
+                   help="blend weights to sweep, each in [0, 1] "
+                        "(default: 0.0 0.5 1.0)")
     p.add_argument("--coe-eval-depth", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--benchmarks", nargs="+", default=list(BENCHMARKS))
@@ -234,6 +235,15 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         datefmt="%H:%M:%S")
+    bad_alpha = [a for a in args.alpha if not 0.0 <= a <= 1.0]
+    if bad_alpha:
+        # alpha is the share of the TRUTH in a convex blend. Outside [0, 1] the
+        # "blend" extrapolates past the truth, which this experiment has no
+        # reading for, and the reported blended MASE — (1-alpha) * MASE — would
+        # go negative.
+        raise SystemExit(
+            f"--alpha must be in [0, 1]; got {bad_alpha}. It is the share of "
+            f"the true horizon in a convex blend with the model's own forecast.")
     if args.coe_eval_depth < 2:
         raise SystemExit("--coe-eval-depth must be >= 2: this is an "
                          "iteration-1 vs iteration-2 comparison")
