@@ -158,6 +158,94 @@ rather than going through `run_evaluation.sh`, because `run_benchmark.py`
 resolves benchmark configs from a hard-coded directory inside tsm-trainer and
 routing an external corpus through it would require writing a file there.
 
+## A.7 Sub-experiment 1-2: cross-horizon dependency x horizon length
+
+A second, separately-built corpus asks whether the refinement gain tracks
+dependency *across the horizon*, and how that changes as the horizon grows.
+Twelve tasks — 4 horizons $\{16, 100, 400, 1000\}$ x 3 dependency regimes
+$\{$high, mid, low$\}$ — scored at every recursion depth $1..N$.
+
+**Why the published corpus could not be used directly.** The source
+(`/group-volume/ts-dataset/cross_horizon_length`) holds the observed context
+byte-identical across all twelve subsets, 8192 series x 2048 steps. The *model*
+does not see 2048 of them: `aed/model_base.py::append_forecast_region` takes the
+forecast region out of the same window,
+
+$$\text{max\_ctx} = \text{context\_length} - \lceil H/P \rceil \cdot P$$
+
+so at $\text{context\_length}=2048$, $P=16$ the history reaching the encoder is
+2032 / 1936 / 1648 / **1040** for $H = 16/100/400/1000$. The horizon axis is then
+collinear with "how much history the model got", and a MASE that rises with $H$
+cannot be attributed to the horizon.
+
+`build_cross_horizon_trim.py` re-cuts every subset to **1040** observed steps —
+what the longest horizon leaves — so no horizon truncates. 1040 and not 1048:
+$\lceil 1000/16 \rceil \cdot 16 = 1008$, not 1000. The twelve still share a
+byte-identical observed window, and `start` is advanced by the 1008 dropped
+steps so timestamps still describe the data.
+
+*Not* preserved: the source README's oracle and Chronos-2 MASE, measured against
+2048 steps and a denominator computed from them. Numbers here are comparable to
+each other, not to that table.
+
+**Depth beyond training is the question, not an accident.** `--iters` may exceed
+`coe_train_depth_max`; `EOPipeline.report_depth` is `max(trained, requested)`,
+so a $K=2$ checkpoint asked for 4 reports `repeat1..repeat4`. Those rows are
+recorded and flagged (`beyond_trained_depth` in the csv, a red line in the
+figure) rather than hidden.
+
+```bash
+bash run_exp001-2_cross-horizon.sh --ckpt /path/to/eo-v4/best_checkpoints --iters 4
+```
+
+Full options are in the script header (`--help`). Files:
+`build_cross_horizon_trim.py`, `run_eval_cross_horizon.py`,
+`build_table_cross_horizon.py`, `run_exp001-2_cross-horizon.sh`.
+
+### Observed history, both corpora
+
+| $H$ | $\lceil H/P \rceil \cdot P$ | published: stored / effective | trimmed: stored / effective |
+|---:|---:|---:|---:|
+| 16 | 16 | 2048 / 2032 | 1040 / 1040 |
+| 100 | 112 | 2048 / 1936 | 1040 / 1040 |
+| 400 | 400 | 2048 / 1648 | 1040 / 1040 |
+| 1000 | 1008 | 2048 / **1040** | 1040 / 1040 |
+
+### Verification run (eo-v4-120M-toto_2080ti, $K=2$, depths 1–4)
+
+MASE, all twelve tasks:
+
+| $H$ | regime | iter1 | iter2 | iter3 | iter4 |
+|---:|---|---:|---:|---:|---:|
+| 16 | high | 0.8942 | **0.8898** | 0.9091 | 0.9312 |
+| 16 | mid | 1.1677 | **1.1648** | 1.1808 | 1.1992 |
+| 16 | low | 1.2969 | **1.2918** | 1.3050 | 1.3210 |
+| 100 | high | 0.9954 | **0.9715** | 0.9875 | 1.0069 |
+| 100 | mid | 1.2360 | **1.2151** | 1.2274 | 1.2437 |
+| 100 | low | 1.3918 | **1.3712** | 1.3812 | 1.3954 |
+| 400 | high | 1.0394 | **1.0286** | 1.0560 | 1.0936 |
+| 400 | mid | 1.2716 | **1.2621** | 1.2853 | 1.3176 |
+| 400 | low | 1.4272 | **1.4181** | 1.4394 | 1.4694 |
+| 1000 | high | **1.1186** | 1.1511 | 1.2485 | 1.3730 |
+| 1000 | mid | **1.3455** | 1.3744 | 1.4606 | 1.5731 |
+| 1000 | low | **1.4920** | 1.5208 | 1.6031 | 1.7118 |
+
+Three things this shows, on this checkpoint:
+
+1. **The dependency gradient survives the re-cut.** high $<$ mid $<$ low at
+   every horizon and every depth, so the regime still means what it meant.
+2. **Iteration 2 is the optimum wherever the model was trained for it** — at
+   $H \le 400$ it beats iteration 1 in all nine cells — and depths 3–4, which
+   this checkpoint never saw, degrade monotonically.
+3. **$H = 1000$ inverts it:** iteration 1 is best and every further pass hurts,
+   by up to $-22.7\%$. With the observed history now held equal, that is not a
+   context-length artefact. It is the one cell where the refinement is
+   counterproductive, and it is also the horizon the checkpoint saw least —
+   `prediction_patch_alpha = 1.5` weights $p(k) \propto k^{-1.5}$, so $H=1000$
+   (63 patches) drew about 0.08% of training samples against 42% for $H=16$.
+   Whether the inversion is the horizon or the training scarcity is not settled
+   by this run.
+
 ## References
 
 [1] E. Taga et al. *TimePFN: Effective Multivariate Time Series Forecasting
