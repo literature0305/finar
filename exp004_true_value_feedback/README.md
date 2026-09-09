@@ -147,6 +147,25 @@ sees. Blending there would feed the wrong values rather than none.
 
 GIFT-Eval is unaffected either way: its capture patches `gift_eval.data.Dataset`.
 
+### Coverage is checked twice, because partial coverage is the worse failure
+
+An arm is refused if the truth reached **no** rows — that one is obvious, and it
+reads as "no effect" when it is really "no experiment". It is also refused if the
+truth reached only **some** rows, which is the harder case: the untreated rows
+get ordinary model feedback while the rest get the truth, so the arm is a blend
+of two treatments reported as one number, and it looks entirely normal.
+
+The likely source at scale is ambiguity rather than a broken hook. Two identical
+contexts with different futures cannot be told apart, so `TruthStore.add_fp`
+drops the fingerprint rather than guess — and constant or all-missing series make
+that collision common. `truth.json` records hits, misses and ambiguous
+fingerprints for every arm.
+
+One related bug this surfaced: `np.array_equal` treats NaN as unequal, so a
+horizon carrying NaN compared unequal to *itself* and re-registering the same
+series in a later window marked its own fingerprint ambiguous. Fixed with
+`equal_nan=True` — it was manufacturing misses that are now fatal.
+
 ### What comes out
 
 | path | contents |

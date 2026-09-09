@@ -137,7 +137,12 @@ class TruthStore:
         if fp in self._ambiguous:
             return
         prev = self.by_fp.get(fp)
-        if prev is not None and not np.array_equal(prev, truth):
+        # `equal_nan`: a horizon carrying NaN compares unequal to ITSELF under
+        # the default, so re-registering the same series in a later window would
+        # mark its own fingerprint ambiguous and drop a truth that was never in
+        # conflict. Conservative in the safe direction, but it manufactures
+        # misses — and misses are now fatal to the arm.
+        if prev is not None and not np.array_equal(prev, truth, equal_nan=True):
             self._ambiguous.add(fp)
             self.by_fp.pop(fp, None)
             return

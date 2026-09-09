@@ -316,6 +316,25 @@ def main() -> int:
                     f"{benchmark}/{tag}: the truth never reached the model "
                     f"({store.n_misses} misses). The capture seam did not fire "
                     f"— this arm is a stock run wearing an alpha label.")
+            if alpha > 0 and (store.n_misses or store.n_ambiguous):
+                # PARTIAL coverage is the failure the hits==0 check cannot see,
+                # and it is worse than total failure because it still produces a
+                # number. Rows that miss get ordinary model feedback while the
+                # rest get the truth, so the arm is a blend of two treatments
+                # reported as one — and it looks entirely normal.
+                #
+                # Ambiguity is the likely source at scale: two identical
+                # contexts with different futures cannot be told apart, so
+                # `TruthStore.add_fp` drops the fingerprint rather than guess,
+                # and constant or all-missing series make that collision common.
+                raise SystemExit(
+                    f"{benchmark}/{tag}: the truth reached only "
+                    f"{store.n_hits}/{store.n_hits + store.n_misses} rows "
+                    f"({store.n_misses} misses, {store.n_ambiguous} ambiguous "
+                    f"fingerprints). A partially treated arm mixes true-value "
+                    f"feedback with ordinary feedback and reports the mixture "
+                    f"as one number, so it is refused rather than published. "
+                    f"Counts are in {dest / 'truth.json'}.")
             logger.info("%s/%s: %d rows in %.1fs (truth hits=%d misses=%d "
                         "ambiguous=%d)", benchmark, tag, len(df),
                         time.time() - t0, store.n_hits, store.n_misses,
