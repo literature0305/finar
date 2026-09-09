@@ -60,6 +60,36 @@ def cov_name(j: int) -> str:
     return f"v{j}"
 
 
+def forecastable(items) -> "np.ndarray":
+    """Items every model can be asked to forecast, as a mask.
+
+    AN ALL-NaN VARIATE IS DROPPED FROM THE OUTPUT BY THE MODEL, NOT FORECAST AS
+    NaN, and that silently breaks this experiment's one positional assumption.
+    Measured on `autogluon/chronos-2` with a 3-variate group at levels
+    100/200/300:
+
+        all-NaN variates   returned rows   what `t[0]` actually is
+        none               3               variate 0   (correct)
+        variate 1          2               variate 0   (correct)
+        variate 0          2               variate 1   WRONG
+        variates 0, 1      1               variate 2   WRONG
+        all three          0               IndexError
+
+    Only the last row raises. The middle two return a plausible forecast of the
+    wrong series, scored against variate 0's truth — no error, no NaN. So the
+    crash that surfaced this was the safe case.
+
+    Dropping the ITEM is the only sound response: the rows the model returns
+    carry no labels, so a partial group cannot be realigned after the fact.
+    These items are unscorable anyway — `prepare()` already rejects a target
+    whose history is entirely NaN, because the seasonal-naive denominator is
+    undefined for it.
+    """
+    return np.array([
+        not np.isnan(np.asarray(it["context"], dtype=np.float64)).all(axis=1).any()
+        for it in items])
+
+
 def step1_inputs(items) -> list[dict]:
     """One multivariate task per item: every variate a target."""
     return [{"target": np.asarray(it["context"], dtype=np.float32)}
@@ -92,6 +122,21 @@ def median_of(q_arr, quantile_levels) -> np.ndarray:
     return np.asarray(q_arr)[:, quantile_levels.index(0.5), :]
 
 
+def _check_rows(out, items, label: str) -> None:
+    """Every task must return one row per variate it was given."""
+    bad = [(i, o.shape, np.asarray(it["context"]).shape[0])
+           for i, (o, it) in enumerate(zip(out, items))
+           if o.shape[0] != np.asarray(it["context"]).shape[0]]
+    if bad:
+        i, got, want = bad[0]
+        raise RuntimeError(
+            f"{label}: task {i} was given {want} variate(s) but the model "
+            f"returned {got[0]} row(s) (shape {got}); {len(bad)} of "
+            f"{len(out)} tasks disagree. The rows are unlabelled, so variate 0 "
+            f"can no longer be identified and every score would be against the "
+            f"wrong series. See `forecastable`.")
+
+
 def run_two_step(forecaster, items, horizon: int, quantile_levels,
                  batch_size: int = 32):
     """``(step1_target_q, step2_target_q, n_identical)`` over ``items``.
@@ -117,6 +162,12 @@ def run_two_step(forecaster, items, horizon: int, quantile_levels,
     # One (n_variates, Q, H) tensor per task. `t[1:]` is empty when a task is
     # univariate, so median_of already yields the (0, H) future step 2 wants.
     s1 = [np.asarray(t) for t in s1]
+    # LOUD, not positional. The model returns rows without labels, so a task
+    # that comes back with fewer rows than it was given variates has silently
+    # renumbered them — `t[0]` would then be a different series than the one
+    # scored against. `forecastable()` removes the known cause (an all-NaN
+    # variate); this catches any other.
+    _check_rows(s1, items, "step 1")
     target1 = np.stack([t[0] for t in s1])
     cov_future = [median_of(t[1:], quantile_levels) for t in s1]
     del s1                      # (V, Q, H) per item; nothing below reads it
@@ -125,7 +176,11 @@ def run_two_step(forecaster, items, horizon: int, quantile_levels,
         _apply_missing_policy(step2_inputs(items, cov_future), policy),
         prediction_length=horizon, quantile_levels=quantile_levels,
         batch_size=batch_size)
-    target2 = np.stack([np.asarray(t)[0] for t in s2])
+    s2 = [np.asarray(t) for t in s2]
+    # Step 2 hands the model ONE target, so every task must come back with
+    # exactly one row.
+    _check_rows(s2, [{"context": np.zeros((1, 1))}] * len(items), "step 2")
+    target2 = np.stack([t[0] for t in s2])
 
     identical = int(np.isclose(target1, target2, rtol=1e-6, atol=1e-8)
                     .all(axis=(1, 2)).sum())

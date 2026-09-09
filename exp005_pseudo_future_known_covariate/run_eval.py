@@ -128,6 +128,18 @@ def build_forecaster(args):
 def score_task(forecaster, task, group, args, Metrics, two_step) -> dict:
     """One task's row: both steps, scored on ONE population."""
     H = int(group[0]["horizon"])
+    # Before the forward. An item carrying an all-NaN variate makes the model
+    # return fewer rows than it was given, unlabelled, so variate 0 can no
+    # longer be identified — see `two_step.forecastable`. 3 of 600 items in
+    # bitbrains_fast_storage/H/short are like this.
+    ok = two_step.forecastable(group)
+    n_unforecastable = int((~ok).sum())
+    if n_unforecastable:
+        logger.info("  %s: dropping %d/%d items with an all-NaN variate",
+                    task, n_unforecastable, len(group))
+        group = [it for it, k in zip(group, ok) if k]
+    if not group:
+        return None
     season = Metrics.get_seasonal_period(group[0]["freq"])
     t0 = time.time()
     with torch.no_grad():
@@ -147,6 +159,7 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> dict:
         "step1_MASE": a["MASE"], "step2_MASE": b["MASE"],
         "step1_WQL": a["WQL"], "step2_WQL": b["WQL"],
         "win_rate": two_step.win_rate(a, b), "n_identical": ident,
+        "n_unforecastable": n_unforecastable,
         "elapsed_s": round(time.time() - t0, 1),
     }
 
@@ -176,6 +189,10 @@ def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
     for task in list(by_task):
         group = by_task.pop(task)   # freed once this task is scored
         row = score_task(forecaster, task, group, args, Metrics, two_step)
+        if row is None:
+            logger.warning("%s: every item carries an all-NaN variate — skipped",
+                           task)
+            continue
         row["benchmark"] = benchmark
         rows.append(row)
         totals["identical"] += row["n_identical"]
