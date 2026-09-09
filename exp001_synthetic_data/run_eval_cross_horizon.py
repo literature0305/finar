@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,65 +38,89 @@ DEFAULT_REPO = Path("/group-volume/workspace/mun-hak.lee/experiments/"
                     "tsm-trainer_001/tsm-trainer")
 DEFAULT_DATA = Path("/group-volume/ts-dataset/"
                     "cross_horizon_length_trim_equal_observed")
-HORIZONS = (16, 100, 400, 1000)
-REGIMES = ("high", "mid", "low")
-
-
-def add_repo_to_path(repo: Path) -> None:
-    ev = repo / "scripts" / "forecasting" / "evaluation"
-    if not ev.is_dir():
-        raise SystemExit(f"no evaluation package under {repo} (looked at {ev})")
-    for p in (str(ev), str(repo / "src")):
-        if p not in sys.path:
-            sys.path.insert(0, p)
+# From the sibling that BUILT the corpus and the sibling that already knows how
+# to read a checkpoint. Imported, not restated: a `--observed` or a fifth
+# horizon that moved only one of two copies would leave this file describing a
+# corpus that is not on disk, with no error.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_cross_horizon_trim import (HORIZONS, REGIMES,  # noqa: E402
+                                      SOURCE_OBSERVED, effective_observed)
+from run_eval import add_repo_to_path, checkpoint_depths  # noqa: E402
 
 
 def write_benchmark_yaml(root: Path, dest: Path) -> Path:
     """The 12-task yaml, generated from what is on disk.
 
-    Derived rather than vendored: a copy of the upstream config edited to point
-    somewhere else is the thing that goes stale when a subset is added or a
-    horizon changes. `offset = -H` and `prediction_length = H` are the same
-    convention `configs/cross-horizon-length.yaml` uses.
+    ENUMERATED FROM DISK, so a subset added to the corpus is picked up rather
+    than silently ignored — which is what iterating a hardcoded list did, while
+    the docstring claimed otherwise. `offset = -H` and `prediction_length = H`
+    are the same convention `configs/cross-horizon-length.yaml` uses.
+
+    Per-entry `data_dir` rather than a shared `datasets_root` (which
+    `run_eval.py::write_config` uses) so the yaml is self-contained: the
+    results directory can be read on a host where the corpus sits elsewhere.
     """
     import yaml
 
     datasets = []
-    for h in HORIZONS:
-        for regime in REGIMES:
-            d = root / f"h{h}" / regime
-            if not d.is_dir():
-                raise SystemExit(
-                    f"{d} is missing — run build_cross_horizon_trim.py first")
-            datasets.append({
-                "name": f"cross_horizon_len_eq/h{h}/{regime}",
-                "data_dir": str(d), "offset": -h,
-                "prediction_length": h, "num_rolls": 1,
-            })
+    for d in sorted(root.glob("h*/*")):
+        if not d.is_dir():
+            continue
+        m = re.fullmatch(r"h(\d+)", d.parent.name)
+        if not m or d.name not in REGIMES:
+            continue
+        h = int(m.group(1))
+        datasets.append({
+            "name": f"cross_horizon_len_eq/h{h}/{d.name}",
+            "data_dir": str(d), "offset": -h,
+            "prediction_length": h, "num_rolls": 1,
+        })
+    if not datasets:
+        raise SystemExit(
+            f"no h<N>/<regime> subsets under {root} — run "
+            f"build_cross_horizon_trim.py first")
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(yaml.dump({"datasets": datasets}, sort_keys=False))
     return dest
 
 
-def observed_report(repo: Path, context_length: int, patch: int) -> list[dict]:
+def corpus_meta(data: Path) -> dict:
+    """What the corpus says it is, from the file the build writes for this.
+
+    Read rather than assumed. `build_cross_horizon_trim.py` records
+    `observed_length` and the window it was cut for, and calls that file "the
+    only on-disk statement of what was cut" — but every consumer used to
+    hardcode 1040, so a corpus built with `--observed 900` produced a manifest,
+    a csv and a figure that all still claimed 1040.
+    """
+    m = data / "metadata.json"
+    if not m.is_file():
+        raise SystemExit(
+            f"{m} is missing, so the observed length this corpus was cut to is "
+            f"unknown — run build_cross_horizon_trim.py, or point --data-root "
+            f"at a corpus it built")
+    d = json.loads(m.read_text())
+    if "observed_length" not in d:
+        raise SystemExit(f"{m} does not record observed_length")
+    return d
+
+
+def observed_report(stored: int, context_length: int, patch: int) -> list[dict]:
     """Horizon vs the history the model actually gets, for both corpora.
 
     The point of the table: in the published corpus the stored context is 2048
     everywhere but the EFFECTIVE context is not, because
     `append_forecast_region` takes the forecast region out of the same window.
     """
-    rows = []
-    for h in HORIZONS:
-        forecast_len = -(-h // patch) * patch
-        rows.append({
-            "horizon": h,
-            "patch_forecast_len": forecast_len,
-            "orig_stored_observed": 2048,
-            "orig_effective_observed": context_length - forecast_len,
-            "trim_stored_observed": 1040,
-            "trim_effective_observed": min(1040, context_length - forecast_len),
-        })
-    return rows
+    return [{
+        "horizon": h,
+        "patch_forecast_len": -(-h // patch) * patch,
+        "orig_stored_observed": SOURCE_OBSERVED,
+        "orig_effective_observed": effective_observed(h, context_length, patch),
+        "trim_stored_observed": stored,
+        "trim_effective_observed": min(
+            stored, effective_observed(h, context_length, patch)),
+    } for h in HORIZONS]
 
 
 def main() -> int:
@@ -126,6 +151,7 @@ def main() -> int:
     from run_benchmark import load_forecaster                          # noqa
 
     args.out.mkdir(parents=True, exist_ok=True)
+    meta = corpus_meta(args.data)
     yaml_path = write_benchmark_yaml(args.data, args.out / "tasks.yaml")
     logger.info("12-task yaml -> %s", yaml_path)
 
@@ -138,7 +164,14 @@ def main() -> int:
     cfg = getattr(eo, "eo_config", None)
     if cfg is None:
         raise SystemExit(f"{args.model_path} is not an EO model")
-    trained = int(getattr(cfg, "coe_train_depth_max", 1))
+    # NOT `coe_train_depth_max`. A checkpoint trained at K=1 with a grad-free
+    # warm-up of 1 has been trained on an input one pass already refined, so
+    # depth 2 is a depth it has seen; `checkpoint_depths` folds that in and four
+    # sibling experiments already depend on it. Using K alone here would put the
+    # `beyond_trained_depth` flag — and the red line in the figure — one column
+    # too far left on such a checkpoint.
+    trained, _, _ = checkpoint_depths(str(args.model_path))
+    trained = int(trained or getattr(cfg, "coe_train_depth_max", 1))
     ctx_len = int(getattr(cfg, "context_length", 0))
     patch = int(getattr(cfg, "patch_size", 0) or 0)
     logger.info("checkpoint: trained_depth=%d context_length=%d patch=%d; "
@@ -150,7 +183,8 @@ def main() -> int:
 
     # The confound this corpus removes only stays removed if the model's window
     # is the one it was cut for. Reported, not enforced.
-    for row in observed_report(args.repo, ctx_len, patch):
+    report = observed_report(int(meta["observed_length"]), ctx_len, patch)
+    for row in report:
         if row["trim_effective_observed"] != row["trim_stored_observed"]:
             logger.warning(
                 "H=%d: this model leaves %d steps of context, below the %d "
@@ -167,7 +201,8 @@ def main() -> int:
         "model_path": str(args.model_path), "coe_eval_depth": args.depth,
         "trained_depth": trained, "context_length": ctx_len,
         "patch_size": patch, "data": str(args.data),
-        "observed_report": observed_report(args.repo, ctx_len, patch),
+        "observed_length": int(meta["observed_length"]),
+        "observed_report": report,
     }, indent=1))
     logger.info("wrote %s (%d rows)", dest, len(df))
     return 0

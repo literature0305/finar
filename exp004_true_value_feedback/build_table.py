@@ -177,7 +177,7 @@ def alpha_iteration_tables(loaded: dict, depth: int) -> pd.DataFrame:
         if len(keep) < len(idx):
             logger.warning(
                 "  %s: %d of %d tasks dropped — not finite at every depth for "
-                "every alpha", len(idx) - len(keep), len(idx), bench)
+                "every alpha", bench, len(idx) - len(keep), len(idx))
 
         for alpha, df in sorted(runs.items()):
             b = pd.to_numeric(df.loc[keep, percols[alpha][1]["MASE"]],
@@ -433,7 +433,10 @@ def main() -> int:
     plot(table, png, lo, hi)
     print(render(table, lo, hi))
 
-    ai = alpha_iteration_tables(loaded, hi)
+    # run_depth(), not `hi`: `--iters 1 2` selects the CONTRAST pair, and
+    # feeding it here would silently shrink a depth-16 run's surface to two
+    # columns — the failure run_depth() exists to prevent, one caller over.
+    ai = alpha_iteration_tables(loaded, run_depth(args.results))
     ai_csv = args.results / "exp004_alpha_iteration.csv"
     ai.to_csv(ai_csv, index=False)
     ai_png = args.results / "exp004_alpha_iteration.png"

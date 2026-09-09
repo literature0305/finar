@@ -67,6 +67,12 @@ OBSERVED = 1040
 REF_CONTEXT_LENGTH = 2048
 REF_PATCH_SIZE = 16
 
+#: What the PUBLISHED corpus stores as observed history, for every one of its
+#: twelve subsets. Numerically equal to REF_CONTEXT_LENGTH by coincidence of how
+#: that corpus was built, and kept separate because they are different facts:
+#: one is a property of the data, the other of the model window.
+SOURCE_OBSERVED = 2048
+
 #: Hours per step. The source corpus is freq "H" throughout; asserted, not
 #: assumed, because advancing `start` by the wrong unit silently mis-times
 #: every series.
@@ -80,42 +86,54 @@ def effective_observed(horizon: int, context_length: int, patch: int) -> int:
 
 
 def trim_one(src: Path, dst: Path, horizon: int, observed: int) -> dict:
-    from datasets import load_from_disk
+    from datasets import DatasetDict, load_from_disk
 
     ds = load_from_disk(str(src))
     split = ds["train"]
     keep = observed + horizon
-    n_drop = None
+    if not len(split):
+        raise SystemExit(f"{src}: empty split")
+    # BEFORE the map, not after: the check needs nothing the map produces, and
+    # running it afterwards means a wrong-freq corpus is discovered only once a
+    # whole subset has been rewritten. Read off the Arrow column rather than
+    # `split["freq"]`, which materialises all 8192 values to look at one.
+    freq = split.data.column("freq").slice(0, 1).to_pylist()[0]
+    if freq != FREQ:
+        raise SystemExit(f"{src}: freq is {freq!r}, not {FREQ!r}, so the "
+                         f"`start` shift below would use the wrong unit")
+    # Known before the closure exists, because `keep` is fixed and the corpus is
+    # uniform. Discovering it row by row needed a nonlocal sentinel whose value
+    # also depended on `.map` staying single-process.
+    n_drop = len(split[0]["target"]) - keep
+    if n_drop < 0:
+        raise SystemExit(
+            f"{src}: series is {len(split[0]['target'])} steps, shorter than "
+            f"the {keep} ({observed} observed + {horizon} horizon) this trim "
+            f"needs")
 
     def cut(batch):
-        nonlocal n_drop
         targets, starts = [], []
         for t, s in zip(batch["target"], batch["start"]):
-            drop = len(t) - keep
-            if drop < 0:
+            if len(t) - keep != n_drop:
                 raise SystemExit(
-                    f"{src}: series is {len(t)} steps, shorter than the "
-                    f"{keep} ({observed} observed + {horizon} horizon) this "
-                    f"trim needs")
-            n_drop = drop if n_drop is None else n_drop
-            if drop != n_drop:
-                raise SystemExit(
-                    f"{src}: series lengths differ ({drop} vs {n_drop} to "
-                    f"drop). The corpus is supposed to be uniform; a per-series "
-                    f"trim would make `start` wrong for some of them.")
-            targets.append(t[drop:])
+                    f"{src}: series lengths differ ({len(t) - keep} vs "
+                    f"{n_drop} to drop). The corpus is supposed to be uniform; "
+                    f"a per-series trim would make `start` wrong for some.")
+            targets.append(t[n_drop:])
             # Advanced by exactly what was dropped: the series now BEGINS
-            # `drop` steps later, and a start left at the old value would
+            # `n_drop` steps later, and a start left at the old value would
             # mis-time every seasonal component in the data.
-            starts.append(s + timedelta(hours=drop))
+            starts.append(s + timedelta(hours=n_drop))
         return {"target": targets, "start": starts}
 
-    split = split.map(cut, batched=True, batch_size=512,
+    # keep_in_memory: `.map`'s default cache writes a full copy of the mapped
+    # table next to the SOURCE data, which is a corpus this script only reads.
+    # Left on, a build left 535 MB of cache-*.arrow inside
+    # cross_horizon_length/ — the size of the output, written a second time into
+    # somebody else's directory. Measured peak RSS for one subset's map:
+    # 0.39 GB, and subsets are processed one at a time.
+    split = split.map(cut, batched=True, batch_size=512, keep_in_memory=True,
                       desc=f"{src.parent.name}/{src.name}")
-    if set(split["freq"][:1]) - {FREQ}:
-        raise SystemExit(f"{src}: freq is not {FREQ!r}, so the `start` shift "
-                         f"above uses the wrong unit")
-    from datasets import DatasetDict
     dst.parent.mkdir(parents=True, exist_ok=True)
     DatasetDict({"train": split}).save_to_disk(str(dst))
     return {"n_series": len(split), "steps_dropped": n_drop,
@@ -160,7 +178,7 @@ def main() -> int:
     # replace a complete record with `"subsets": []` and destroy the only
     # on-disk statement of what was cut. That is exactly what happens when the
     # corpus is copied to the A100 and `--stage all` is used there.
-    (args.dst).mkdir(parents=True, exist_ok=True)
+    args.dst.mkdir(parents=True, exist_ok=True)
     meta_path = args.dst / "metadata.json"
     subsets = {}
     if meta_path.is_file():
@@ -168,11 +186,12 @@ def main() -> int:
             for r in json.loads(meta_path.read_text()).get("subsets", []):
                 subsets[(r["horizon"], r["regime"])] = r
         except (json.JSONDecodeError, OSError, KeyError) as e:
-            logger_warn = f"could not read {meta_path} ({e}); rewriting it"
-            print(f"  WARNING: {logger_warn}")
+            print(f"  WARNING: could not read {meta_path} ({e}); rewriting it")
     for r in rows:
         subsets[(r["horizon"], r["regime"])] = r
-    rows = [subsets[k] for k in sorted(subsets)]
+    # A DIFFERENT list from `rows`: everything on disk, not just what this run
+    # rebuilt. The count printed below is of the record, which is the point.
+    recorded = [subsets[k] for k in sorted(subsets)]
     meta_path.write_text(json.dumps({
         "source": str(args.src),
         "observed_length": args.observed,
@@ -181,9 +200,10 @@ def main() -> int:
                     "patch_size": REF_PATCH_SIZE},
         "why": ("every horizon shows the model the same observed history; "
                 "see build_cross_horizon_trim.py"),
-        "subsets": rows,
+        "subsets": recorded,
     }, indent=1, default=str))
-    print(f"wrote {meta_path} ({len(rows)}/12 subsets recorded)")
+    print(f"wrote {meta_path} ({len(recorded)}/"
+          f"{len(HORIZONS) * len(REGIMES)} subsets recorded)")
     return 0
 
 

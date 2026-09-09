@@ -26,6 +26,7 @@ import argparse
 import json
 import logging
 import re
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -33,17 +34,26 @@ import pandas as pd
 
 logger = logging.getLogger("finar_exp001_2_table")
 
-REGIME_ORDER = ["high", "mid", "low"]
-_NAME_RE = re.compile(r"h(?P<h>\d+)/(?P<regime>high|mid|low)\s*$")
-_REPEAT_RE = re.compile(r"^repeat(?P<r>\d+)_(?P<metric>WQL|MASE)$")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_cross_horizon_trim import REGIMES  # noqa: E402
+from build_table import depth_columns         # noqa: E402
+
+REGIME_ORDER = list(REGIMES)
+_NAME_RE = re.compile(r"h(?P<h>\d+)/(?P<regime>" + "|".join(REGIMES) + r")\s*$")
 
 
 def melt(df: pd.DataFrame, trained_depth: int) -> pd.DataFrame:
     """One row per (horizon, regime, iteration)."""
     name_col = next((c for c in ("dataset", "name", "task", "dataset_name")
-                     if c in df.columns), df.columns[0])
-    depths = sorted({int(m["r"]) for c in df.columns
-                     if (m := _REPEAT_RE.match(c))})
+                     if c in df.columns), None)
+    if name_col is None:
+        # Falling back to df.columns[0] made every row fail _NAME_RE and died
+        # later with an error that named none of this.
+        raise SystemExit(
+            f"results.csv has no task-name column; looked for dataset/name/"
+            f"task/dataset_name among {list(df.columns)[:8]}")
+    cols = depth_columns(df)
+    depths = sorted(cols)
     if not depths:
         raise SystemExit(
             "no repeat<r>_MASE columns in results.csv — the run scored a "
@@ -57,8 +67,8 @@ def melt(df: pd.DataFrame, trained_depth: int) -> pd.DataFrame:
         for d in depths:
             rows.append({
                 "horizon": int(m["h"]), "regime": m["regime"], "iteration": d,
-                "MASE": float(r.get(f"repeat{d}_MASE", np.nan)),
-                "WQL": float(r.get(f"repeat{d}_WQL", np.nan)),
+                "MASE": float(r.get(cols[d].get("MASE"), np.nan)),
+                "WQL": float(r.get(cols[d].get("WQL"), np.nan)),
                 # Depths past the trained maximum are still recorded — that is
                 # the question — but a reader must not mistake them for
                 # in-distribution numbers.
@@ -69,7 +79,8 @@ def melt(df: pd.DataFrame, trained_depth: int) -> pd.DataFrame:
     return out.sort_values(["horizon", "regime", "iteration"])
 
 
-def heatmaps(t: pd.DataFrame, dest: Path, metric: str, trained_depth: int) -> None:
+def heatmaps(t: pd.DataFrame, dest: Path, metric: str, trained_depth: int,
+             observed: int) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -104,7 +115,7 @@ def heatmaps(t: pd.DataFrame, dest: Path, metric: str, trained_depth: int) -> No
             ax.axvline(list(piv.columns).index(trained_depth) + 0.5,
                        color="r", lw=1.5, ls="--")
         fig.colorbar(im, ax=ax, fraction=0.046)
-    fig.suptitle(f"equal observed history (1040 steps) at every horizon; "
+    fig.suptitle(f"equal observed history ({observed} steps) at every horizon; "
                  f"red line = trained depth {trained_depth}, right of it is "
                  f"deeper than training", fontsize=9, y=0.02)
     fig.tight_layout()
@@ -136,14 +147,22 @@ def main() -> int:
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    man = json.loads((args.results / "manifest.json").read_text())
-    trained = int(man.get("trained_depth", 1))
+    man_path = args.results / "manifest.json"
+    if not man_path.is_file():
+        raise SystemExit(f"{man_path} is missing — this is not a finished "
+                         f"run_eval_cross_horizon.py output directory")
+    man = json.loads(man_path.read_text())
+    for k in ("trained_depth", "observed_length"):
+        if k not in man:
+            raise SystemExit(f"{man_path} does not record {k}")
+    trained = int(man["trained_depth"])
     df = pd.read_csv(args.results / "results.csv")
     t = melt(df, trained)
     t.to_csv(args.results / "cross_horizon_table.csv", index=False)
     pd.DataFrame(man["observed_report"]).to_csv(
         args.results / "cross_horizon_observed.csv", index=False)
-    heatmaps(t, args.results / "cross_horizon_heatmaps.png", "MASE", trained)
+    heatmaps(t, args.results / "cross_horizon_heatmaps.png", "MASE", trained,
+             int(man["observed_length"]))
 
     print(render(t, "MASE"))
     print()
