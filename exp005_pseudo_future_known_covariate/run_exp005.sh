@@ -44,7 +44,13 @@
 #   bash run_exp005.sh --ckpt amazon/chronos-2
 #   bash run_exp005.sh --ckpt google/timesfm-3.0-pytorch
 #   bash run_exp005.sh --ckpt NX-AI/TiRex-2
+#   bash run_exp005.sh --ckpt Datadog/Toto-2.0-313m
 #   bash run_exp005.sh --ckpt /path/to/eo-v4/best_checkpoints --depth 1
+#
+#   # Toto-2.0 across sizes (see the note at the bottom for why it belongs here)
+#   for S in 4m 22m 313m 1B 2.5B; do
+#       bash run_exp005.sh --ckpt "Datadog/Toto-2.0-$S"
+#   done
 #
 #   # a quick smoke, and tables only
 #   bash run_exp005.sh --ckpt amazon/chronos-2 --max-tasks 2 --max-items 16
@@ -59,15 +65,18 @@
 # ---------------------------------------------------------------------------
 # OPTIONS
 # ---------------------------------------------------------------------------
-#   --ckpt PATH|ID      one model. Repeatable. Default: all four below.
+#   --ckpt PATH|ID      one model. Repeatable. Default: all five below.
 #                       amazon/chronos-2, google/timesfm-3.0-pytorch,
-#                       NX-AI/TiRex-2, and a local EO v4 checkpoint.
+#                       NX-AI/TiRex-2, Datadog/Toto-2.0-313m, and a local EO v4
+#                       checkpoint. Any Datadog/Toto-2.0-{4m,22m,313m,1B,2.5B,
+#                       2.5B-FT} is accepted — the loader dispatches on the
+#                       "toto-2" substring, so the size is free to vary.
 #   --repo PATH         tsm-trainer checkout to IMPORT from. Read-only.
 #   --stage eval|table|all        default: all
 #   --benchmarks "fev gift"       default: both
 #   --depth N           EO v4 only: --coe-eval-depth. Default 1, which makes a
 #                       K>=2 checkpoint behave as the one-pass model this
-#                       experiment is about. Ignored by the other three.
+#                       experiment is about. Ignored by the other models.
 #   --batch-size N      default 32
 #   --max-tasks N       cap tasks per benchmark (smoke runs)
 #   --max-items N       cap items per task
@@ -94,6 +103,36 @@
 # `chronos-forecasting` package in the interpreter being used. Where it is
 # absent, `autogluon/chronos-2` reaches the same model through
 # Chronos2Forecaster and is what the local verification used.
+#
+# ---------------------------------------------------------------------------
+# A NOTE ON Datadog/Toto-2.0
+# ---------------------------------------------------------------------------
+# Toto-2 belongs in this experiment because it takes a REAL known future rather
+# than only extra past variates: Toto2Forecaster feeds known-dynamic covariates
+# through the model's `known_dynamic` slot, spanning context+horizon, so their
+# future half conditions the forecast (engine/forecaster.py, _forecast_tasks_
+# batch). Verified directly — supplying a future changes the forecast, and
+# REVERSING that future changes it again, so the model reads the values and not
+# merely the slot.
+#
+# Needs `pip install 'toto-2 @ git+https://github.com/DataDog/toto.git#subdirect
+# ory=toto2'` (--no-deps, or it clobbers torch). Any size works: the loader
+# dispatches on the "toto-2" substring of the id.
+#
+# HORIZON LIMIT — READ THIS WITH EVERY TOTO-2 ROW. Toto2Forecaster reaches the
+# model with only the FIRST ceil(H/32)-1 patches of the known future (32 is
+# Toto's patch_size), so the last patch of the horizon never sees its future
+# and, for H <= 32, none of it does. Measured by perturbing one future patch at
+# a time: at H=96 patches 0 and 1 move the forecast and patch 2 does not; the
+# threshold is H>=33 at every context length tried. 15 of exp005's 45 tasks
+# have H <= 32, and a Toto-2 row on those is a guaranteed null — run_eval.py
+# WARNs per task and the n_identical column carries it into the table. This is
+# a tsm-trainer defect; it is reported, not patched from here.
+#
+# Its PUBLISHED fev-bench numbers use no covariates at all — the official
+# adapter builds Toto2GluonTSModelConfig with no covariate dims — so this run
+# is deliberately NOT the leaderboard protocol. That is the default here;
+# --leaderboard-parity in run_benchmark.py is what restores it.
 # ===========================================================================
 set -euo pipefail
 
@@ -103,6 +142,8 @@ DEFAULT_CKPTS=(
     "amazon/chronos-2"
     "google/timesfm-3.0-pytorch"
     "NX-AI/TiRex-2"
+    # One size by default; the header shows the loop over the other five.
+    "Datadog/Toto-2.0-313m"
     "/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer/outputs/eo-v4-120M-toto_2080ti/best_checkpoints"
 )
 CKPTS=(); STAGE="all"; DEPTH=1; BATCH=32; OUT=""

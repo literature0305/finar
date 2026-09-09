@@ -180,6 +180,17 @@ def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
         rows.append(row)
         totals["identical"] += row["n_identical"]
         totals["items"] += row["n_items"]
+        if row["n_identical"] == row["n_items"]:
+            # The whole-run refusal below cannot see this: a model that is
+            # blind on SOME tasks still differs on others, so the run passes
+            # while these rows carry a null that is plumbing, not a finding.
+            # Toto-2 is the known case — it reads only the first
+            # ceil(H/patch)-1 patches of a known future, so every task with
+            # H <= 32 gets its future dropped entirely.
+            logger.warning(
+                "  %s: step 2 returned step 1 on ALL %d items (H=%d). This row "
+                "measures nothing — the covariate future did not reach the "
+                "model.", task, row["n_items"], row["horizon"])
         logger.info("  %-34s n=%-4d(-%d) MASE %.4f -> %.4f  WQL %.4f -> %.4f  "
                     "win %.0f%%  identical %d/%d", task[:34], row["n_scored"],
                     row["n_dropped"], row["step1_MASE"], row["step2_MASE"],

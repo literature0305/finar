@@ -72,7 +72,11 @@ bash run_exp005.sh --repo /group-volume/.../tsm-trainer_001/tsm-trainer
 bash run_exp005.sh --ckpt amazon/chronos-2
 bash run_exp005.sh --ckpt google/timesfm-3.0-pytorch
 bash run_exp005.sh --ckpt NX-AI/TiRex-2
+bash run_exp005.sh --ckpt Datadog/Toto-2.0-313m
 bash run_exp005.sh --ckpt /path/to/eo-v4/best_checkpoints --depth 1
+
+# Toto-2.0 across sizes
+for S in 4m 22m 313m 1B 2.5B; do bash run_exp005.sh --ckpt "Datadog/Toto-2.0-$S"; done
 bash run_exp005.sh --ckpt amazon/chronos-2 --max-tasks 2 --max-items 16
 bash run_exp005.sh --stage table
 ```
@@ -97,6 +101,61 @@ and no statistic worth reading.
 `improvement_pct` is $(\text{step1} - \text{step2}) / \text{step1}$, so
 **positive means the pseudo-known-future pass helped**.
 
+### Why Toto-2.0 is in this list
+
+Toto-2 is the one model here that takes a **real** known future rather than
+only extra past variates. `Toto2Forecaster._forecast_tasks_batch` routes
+known-dynamic covariates into the model's `known_dynamic` slot, spanning
+context $+$ horizon, so their future half conditions the forecast; a covariate
+with no future stays an ordinary extra past variate. That was verified rather
+than assumed: supplying a future changes the forecast, and *reversing* that
+future changes it again, so the model reads the values and not merely the
+presence of the slot.
+
+Every size is accepted — `Datadog/Toto-2.0-{4m,22m,313m,1B,2.5B,2.5B-FT}` —
+because `run_benchmark._detect_model_type` dispatches on the `toto-2`
+substring, so the size varies freely. This makes exp005's question askable
+*across scale*: whether a predicted future starts to help once the model is
+large enough to use a real one.
+
+Toto-2's **published** fev-bench numbers use no covariates at all (its official
+adapter builds `Toto2GluonTSModelConfig` with no covariate dims), so this run
+is deliberately not the leaderboard protocol — `--leaderboard-parity` in
+`run_benchmark.py` is what restores it.
+
+#### A horizon limit that must be read with every Toto-2 row
+
+`Toto2Forecaster` reaches the model with only the **first
+$\lceil H/32 \rceil - 1$ patches** of the known future (32 is Toto's
+`patch_size`). The final patch of the horizon never sees its future values, and
+when $H \le 32$ that is the *entire* future.
+
+Measured, not inferred. Perturbing one patch of the future at a time and
+watching the forecast:
+
+| horizon | `future[0:32]` | `future[32:64]` | `future[64:96]` |
+|---|---|---|---|
+| $H=48$ | 0.060 | **0.000** | — |
+| $H=96$ | 0.601 | 0.357 | **0.000** |
+
+and sweeping $H$ with the context length and covariate count held free, the
+future is ignored for $H \in \{13, 28, 32\}$ and read from $H = 33$ upward, at
+every context length in $\{38, 164, 640, 4064\}$ and for both 1 and 6
+covariates. Reversing the future changes nothing below the threshold either, so
+this is the tensor not being consumed, not the model declining to use it.
+
+**Consequence for this experiment.** Of the 45 tasks exp005 scores, **15 have
+$H \le 32$** (10 of 26 fev, 5 of 19 GIFT-Eval), and on those a Toto-2 row is a
+guaranteed null: step 2 returns step 1 exactly. `run_eval.py` logs a WARNING
+naming each such task and its horizon, and the per-task `n_identical` column
+carries it into the table — a Toto-2 row whose `ident` equals its `n_items` is
+plumbing, not a finding. The run-level refusal does not fire here, because
+Toto-2 *does* differ on the other 30 tasks.
+
+This is a defect in `Toto2Forecaster._forecast_tasks_batch`'s `known_dynamic`
+layout, in the read-only tsm-trainer checkout; it is reported, not patched from
+here.
+
 ### Two environment notes
 
 * `amazon/chronos-2` routes to tsm-trainer's official-Chronos loader, which
@@ -104,6 +163,9 @@ and no statistic worth reading.
   it is absent, `autogluon/chronos-2` reaches the same model through
   `Chronos2Forecaster`, and that is what the local verification used.
 * `NX-AI/TiRex-2` builds a CUDA extension and needs `ninja` on `PATH`.
+* `Datadog/Toto-2.0-*` needs the `toto2` package:
+  `pip install --no-deps 'toto-2 @ git+https://github.com/DataDog/toto.git#subdirectory=toto2'`
+  (without `--no-deps` it replaces the installed torch).
 
 ## A.5 Verification
 
