@@ -155,8 +155,25 @@ def main() -> int:
             print(f"  h{h}/{regime}: {info['n_series']} series, "
                   f"dropped {info['steps_dropped']} -> {info['series_len']} steps")
 
+    # MERGED, not overwritten. A re-run on a host that already has the corpus
+    # skips every subset, so `rows` is empty — writing it straight out would
+    # replace a complete record with `"subsets": []` and destroy the only
+    # on-disk statement of what was cut. That is exactly what happens when the
+    # corpus is copied to the A100 and `--stage all` is used there.
     (args.dst).mkdir(parents=True, exist_ok=True)
-    (args.dst / "metadata.json").write_text(json.dumps({
+    meta_path = args.dst / "metadata.json"
+    subsets = {}
+    if meta_path.is_file():
+        try:
+            for r in json.loads(meta_path.read_text()).get("subsets", []):
+                subsets[(r["horizon"], r["regime"])] = r
+        except (json.JSONDecodeError, OSError, KeyError) as e:
+            logger_warn = f"could not read {meta_path} ({e}); rewriting it"
+            print(f"  WARNING: {logger_warn}")
+    for r in rows:
+        subsets[(r["horizon"], r["regime"])] = r
+    rows = [subsets[k] for k in sorted(subsets)]
+    meta_path.write_text(json.dumps({
         "source": str(args.src),
         "observed_length": args.observed,
         "horizons": list(HORIZONS), "regimes": list(REGIMES),
@@ -166,7 +183,7 @@ def main() -> int:
                 "see build_cross_horizon_trim.py"),
         "subsets": rows,
     }, indent=1, default=str))
-    print(f"wrote {args.dst}/metadata.json")
+    print(f"wrote {meta_path} ({len(rows)}/12 subsets recorded)")
     return 0
 
 

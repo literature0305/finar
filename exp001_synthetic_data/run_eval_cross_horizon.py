@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Score one EO v4 checkpoint on the equal-observed cross-horizon sweep, at
-every recursion depth from 1 to --iters.
+every recursion depth from 1 to --coe-eval-depth.
 
     12 tasks = 4 horizons (16/100/400/1000) x 3 dependency regimes (high/mid/low)
 
@@ -19,7 +19,7 @@ checkout's configs/.
 
 Usage
 -----
-    python run_eval_cross_horizon.py --model-path <eo-v4 ckpt> --out <dir> --iters 4
+    python run_eval_cross_horizon.py --model-path <eo-v4 ckpt> --out <dir> --coe-eval-depth 4
 """
 
 from __future__ import annotations
@@ -106,7 +106,10 @@ def main() -> int:
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     p.add_argument("--data", type=Path, default=DEFAULT_DATA)
-    p.add_argument("--iters", type=int, default=4,
+    # `--coe-eval-depth`, spelled the way run_benchmark.py and every other
+    # experiment's run_eval.py spell it, so one name means one thing across the
+    # repo. The shell wrapper's `--depth` maps onto it, as it does in exp001..5.
+    p.add_argument("--coe-eval-depth", type=int, default=4, dest="depth",
                    help="recursion depths to score, 1..N. May exceed the "
                         "checkpoint's trained depth; that is the experiment.")
     p.add_argument("--batch-size", type=int, default=32)
@@ -114,8 +117,8 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         datefmt="%H:%M:%S")
-    if args.iters < 1:
-        raise SystemExit("--iters must be >= 1")
+    if args.depth < 1:
+        raise SystemExit("--coe-eval-depth must be >= 1")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     add_repo_to_path(args.repo)
 
@@ -130,7 +133,7 @@ def main() -> int:
         model_path=args.model_path, device="cuda", torch_dtype="float32",
         config_path=None, model_source_path=None, batch_size=args.batch_size,
         eo_max_n_variate=None, rolling_horizon=None, rolling_quantiles=None,
-        coe_eval_depth=args.iters))
+        coe_eval_depth=args.depth))
     eo = getattr(getattr(forecaster, "_pipeline", None), "model", None)
     cfg = getattr(eo, "eo_config", None)
     if cfg is None:
@@ -139,11 +142,11 @@ def main() -> int:
     ctx_len = int(getattr(cfg, "context_length", 0))
     patch = int(getattr(cfg, "patch_size", 0) or 0)
     logger.info("checkpoint: trained_depth=%d context_length=%d patch=%d; "
-                "scoring depths 1..%d", trained, ctx_len, patch, args.iters)
-    if args.iters > trained:
+                "scoring depths 1..%d", trained, ctx_len, patch, args.depth)
+    if args.depth > trained:
         logger.info("depths %d..%d are DEEPER than this checkpoint was trained "
                     "for — recorded, and marked in the table",
-                    trained + 1, args.iters)
+                    trained + 1, args.depth)
 
     # The confound this corpus removes only stays removed if the model's window
     # is the one it was cut for. Reported, not enforced.
@@ -161,7 +164,7 @@ def main() -> int:
     dest = args.out / "results.csv"
     df.to_csv(dest, index=False)
     (args.out / "manifest.json").write_text(json.dumps({
-        "model_path": str(args.model_path), "iters": args.iters,
+        "model_path": str(args.model_path), "coe_eval_depth": args.depth,
         "trained_depth": trained, "context_length": ctx_len,
         "patch_size": patch, "data": str(args.data),
         "observed_report": observed_report(args.repo, ctx_len, patch),

@@ -195,8 +195,37 @@ recorded and flagged (`beyond_trained_depth` in the csv, a red line in the
 figure) rather than hidden.
 
 ```bash
-bash run_exp001-2_cross-horizon.sh --ckpt /path/to/eo-v4/best_checkpoints --iters 4
+bash run_exp001-2_cross-horizon.sh --ckpt /path/to/eo-v4/best_checkpoints --depth 4
 ```
+
+`--depth` is `--coe-eval-depth`, the same name and meaning it has in
+`run_exp001.sh` and in exp002–exp005; `--force-data` and `--data-root` likewise.
+
+**Running it on the remote A100.** The corpus is self-contained — `save_to_disk`
+Arrow, 536 MB, nothing inside it points back at the source — so one directory is
+all that has to travel:
+
+```bash
+rsync -a /group-volume/ts-dataset/cross_horizon_length_trim_equal_observed/ \
+         <a100>:/group-volume/ts-dataset/cross_horizon_length_trim_equal_observed/
+
+ssh <a100-host>
+cd .../finar_001/finar/exp001_synthetic_data
+nohup bash run_exp001-2_cross-horizon.sh \
+    --ckpt /path/to/eo-v4/best_checkpoints \
+    --repo /group-volume/.../tsm-trainer_001/tsm-trainer \
+    --depth 4 --batch-size 64 > exp001-2.log 2>&1 &
+```
+
+The **published** corpus does not need to travel. It is read only by
+`--stage build`, and only for subsets that are missing; with the trimmed corpus
+in place every subset is skipped, so `--stage all` is safe. Pass `--data-root`
+if the remote path differs — the 12-task yaml is regenerated into `--out` on
+every run, so there is no stale path to repair.
+
+Reference runtime: 12 tasks x 8192 series at depth 4 took 810 s on a 12 GB card
+at `--batch-size 32` (forecast 701 s, metrics 5 s), peak under 2 GB. An A100 40G
+takes `--batch-size 256` comfortably.
 
 Full options are in the script header (`--help`). Files:
 `build_cross_horizon_trim.py`, `run_eval_cross_horizon.py`,
