@@ -132,11 +132,25 @@ fev-bench's multivariate subset that mean is 39.7 and the widest group is 100,
 so the two readings ("cross-variate matters" vs "more feedback is better")
 cannot be separated from this design alone.
 
-**Univariate tasks are degenerate and are reported separately.** With one
-variate there is no "other": `self_only` feeds back everything (identical to
-`full`) and `cov_only` feeds back nothing (identical to iteration 1). GIFT-Eval
-carries 54 such tasks, so pooling them would pull every regime toward the middle
-for a reason unrelated to the question.
+**Univariate tasks are degenerate, and are not run.** With one variate there is
+no "other": `self_only` feeds back everything (identical to `full`) and
+`cov_only` feeds back nothing (identical to iteration 1). Both arms are
+therefore restricted to multivariate tasks — fev-bench by `subset="multivariate"`
+and GIFT-Eval by an explicit `datasets=` list built from
+`baselines/gift_eval_hf_variate_types.csv`.
+
+The GIFT-Eval half of that was missing at first, and the omission is worth
+naming because the adapter's name invites it: the `_mul` in
+`GiftEvalHFMulAdapter` is a HANDLING mode — feed a multivariate dataset whole
+through group attention rather than the official `to_univariate=True`
+flattening — not a subset. Constructed without `datasets=` it returns all 97
+tasks, 54 of them univariate, so the two arms were not measuring the same
+population and 82% of the run's cost bought rows that cannot answer the
+question. Filtering leaves 43 tasks and cuts the benchmark's total
+$\text{items} \times \text{horizon}$ from 34.1M to 6.0M.
+
+`build_table.py` still stratifies on width. A univariate row appearing in a
+fresh result is now a bug report, not a footnote.
 
 ## A.6 Verification
 

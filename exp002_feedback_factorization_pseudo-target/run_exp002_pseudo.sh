@@ -28,7 +28,17 @@
 # are no covariates at all:
 #
 #   fev_mul    fev-bench's `multivariate` subset (>1 target, no dynamic covs)
-#   gift_mul   GIFT-Eval HF, multivariate tasks fed whole (group attention on)
+#   gift_mul   GIFT-Eval HF, restricted to its 43 MULTIVARIATE tasks and fed
+#              whole (group attention on)
+#
+# BOTH arms are filtered, and they are filtered differently because the two
+# adapters expose the subset differently: fev-bench names it (subset=),
+# GIFT-Eval takes an explicit dataset list (datasets=). The `_mul` in
+# GiftEvalHFMulAdapter is a HANDLING mode, not a subset — without datasets= it
+# returns all 97 tasks, 54 of them UNIVARIATE, where self_only is identical to
+# full and cov_only is identical to iteration 1 by construction. Those 54 also
+# carry 82% of the benchmark's cost (electricity/15T alone is 7,400 items per
+# term at H up to 720).
 #
 # and DESIGNATES the first variate of each group as the target, the rest as
 # pseudo-covariates. "Self" is then exactly one variate and "cross" exactly the

@@ -183,13 +183,64 @@ def resolve_data(explicit, default: Path, what: str):
     return None
 
 
+def gift_multivariate_datasets() -> list[str]:
+    """The GIFT-Eval datasets whose targets are multivariate.
+
+    THE ADAPTER DOES NOT DO THIS FOR US, and its name says otherwise. The
+    `_mul` in `GiftEvalHFMulAdapter` is a HANDLING mode — "feed a multivariate
+    dataset whole through group attention instead of the official
+    `to_univariate=True` flattening" — not a subset. Constructed without
+    `datasets=`, its `load_tasks()` returns `ALL_DATASETS x terms`: all 97
+    tasks, 54 of them univariate.
+
+    Those 54 are not merely uninformative here, they are DEGENERATE BY
+    CONSTRUCTION: with one variate there is no "other", so `self_only` feeds
+    back everything (identical to `full`) and `cov_only` feeds back nothing
+    (identical to iteration 1). They also cost most of the run — 82% of the
+    benchmark's total `items x horizon` sits in univariate tasks, and the three
+    largest (`electricity/15T/{short,medium,long}`, 7,400 items each) are all
+    univariate.
+
+    Read from tsm-trainer's committed `baselines/gift_eval_hf_variate_types.csv`
+    rather than by opening each corpus. `get_gift_eval_hf_variate_types()` is
+    NOT used: it WRITES the csv back when it meets an unknown name, and that
+    checkout is read-only here. A name the csv does not cover is therefore a
+    hard failure — dropping it silently would shrink the suite invisibly, which
+    is the same class of mistake this whole experiment exists to avoid.
+    """
+    import pandas as pd
+    from benchmarks import variate_types
+    from benchmarks.gift_eval_hf import ALL_DATASETS
+
+    df = pd.read_csv(variate_types._GIFT_EVAL_HF_CSV)
+    known = set(df["dataset"])
+    unknown = [d for d in ALL_DATASETS if d not in known]
+    if unknown:
+        raise SystemExit(
+            f"{variate_types._GIFT_EVAL_HF_CSV} does not cover {unknown}, so "
+            f"their variate count is unknown and they would be dropped "
+            f"silently. Populate the csv in the tsm-trainer checkout first.")
+    keep = [d for d in ALL_DATASETS
+            if d in set(df.loc[df["is_multivariate"].astype(bool), "dataset"])]
+    if not keep:
+        raise SystemExit("no multivariate GIFT-Eval datasets found")
+    logger.info("gift_mul: %d of %d datasets are multivariate", len(keep),
+                len(ALL_DATASETS))
+    return keep
+
+
 def make_adapter(benchmark: str, args):
-    """The stock adapter for one benchmark, configured for MULTIVARIATE tasks.
+    """The stock adapter for one benchmark, restricted to MULTIVARIATE tasks.
 
     `ignore_group_id=False` in both: it is what feeds a task's variates as one
     group instead of flattening them into independent univariate series. With
     it True there would be no cross-variate feedback to restrict and all three
     scenarios would return the same numbers.
+
+    Both arms are filtered, and they are filtered DIFFERENTLY because the two
+    adapters expose the subset differently: fev-bench names it (`subset=`),
+    GIFT-Eval takes an explicit dataset list (`datasets=`). Leaving the second
+    off is not a smaller filter, it is no filter at all.
     """
     slice_kw = {"task_subset_index": args.task_subset_index,
                 "num_task_subsets": args.num_task_subsets}
@@ -203,6 +254,7 @@ def make_adapter(benchmark: str, args):
         from benchmarks.gift_eval_hf_mul import GiftEvalHFMulAdapter
         return GiftEvalHFMulAdapter(
             data_dir=resolve_data(args.gift_data, _LOCAL_GIFT, "gift"),
+            datasets=gift_multivariate_datasets(),
             batch_size=args.batch_size, ignore_group_id=False,
             name="gift_eval_hf_mul", **slice_kw), "gift_eval_hf_mul"
     raise SystemExit(f"unknown benchmark {benchmark!r}; known: {BENCHMARKS}")
