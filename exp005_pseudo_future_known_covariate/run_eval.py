@@ -40,6 +40,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import torch
 
 logger = logging.getLogger("finar_exp005")
@@ -91,6 +92,13 @@ def parse_args(argv=None):
                    help="EO v4 only. 1 makes a K>=2 checkpoint behave as the "
                         "one-pass model this experiment is about; ignored by "
                         "the other three.")
+    p.add_argument("--alpha", type=float, nargs="+", default=[0.0],
+                   help="how much of the covariates' TRUE future to blend into "
+                        "the pseudo one, each in [0, 1]: "
+                        "alpha*oracle + (1-alpha)*pseudo. 0 is the scenario "
+                        "exp005 measured (the model's own guess); 1 is the "
+                        "known-future upper bound. Only COVARIATES are ever "
+                        "oracle — the scored target never is.")
     p.add_argument("--batch-size", type=int, default=32)
     p.add_argument("--max-tasks", type=int, default=None)
     p.add_argument("--max-items-per-task", type=int, default=None)
@@ -125,8 +133,8 @@ def build_forecaster(args):
     return forecaster
 
 
-def score_task(forecaster, task, group, args, Metrics, two_step) -> dict:
-    """One task's row: both steps, scored on ONE population."""
+def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
+    """One row per alpha for this task, all sharing ONE step 1 and ONE mask."""
     H = int(group[0]["horizon"])
     # Before the forward. An item carrying an all-NaN variate makes the model
     # return fewer rows than it was given, unlabelled, so variate 0 can no
@@ -139,29 +147,43 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> dict:
                     task, n_unforecastable, len(group))
         group = [it for it, k in zip(group, ok) if k]
     if not group:
-        return None
+        return []
+
     season = Metrics.get_seasonal_period(group[0]["freq"])
     t0 = time.time()
+    # ONE step 1 for every alpha: it does not depend on the blend, so paying it
+    # per alpha would cost a forward each and let the sweep's own baseline drift
+    # between its columns.
     with torch.no_grad():
-        s1, s2, ident = two_step.run_two_step(
+        s1, cov_future = two_step.run_step1(
             forecaster, group, H, QUANTILES, batch_size=args.batch_size)
-    # ONE prepare for both steps: scoring each on its own survivors would
-    # compare two populations, and the truth stack and the seasonal-naive
-    # denominators are identical between them anyway.
+    # ONE prepare for every step and every alpha: scoring each on its own
+    # survivors would compare different populations.
     prep = two_step.prepare(group, H, season, Metrics)
     a = two_step.score(s1, prep, QUANTILES, Metrics)
-    b = two_step.score(s2, prep, QUANTILES, Metrics)
-    return {
-        "model": str(args.model_path), "task": task, "n_items": len(group),
-        "horizon": H, "seasonality": season,
-        "n_variates": int(group[0]["context"].shape[0]),
-        "n_scored": prep["n_scored"], "n_dropped": prep["n_dropped"],
-        "step1_MASE": a["MASE"], "step2_MASE": b["MASE"],
-        "step1_WQL": a["WQL"], "step2_WQL": b["WQL"],
-        "win_rate": two_step.win_rate(a, b), "n_identical": ident,
-        "n_unforecastable": n_unforecastable,
-        "elapsed_s": round(time.time() - t0, 1),
-    }
+
+    rows = []
+    for alpha in args.alpha:
+        with torch.no_grad():
+            s2, ident = two_step.run_step2(
+                forecaster, group, cov_future, s1, alpha, H, QUANTILES,
+                batch_size=args.batch_size)
+        b = two_step.score(s2, prep, QUANTILES, Metrics)
+        imp = ((a["MASE"] - b["MASE"]) / a["MASE"] * 100
+               if np.isfinite(a["MASE"]) and a["MASE"] else float("nan"))
+        rows.append({
+            "model": str(args.model_path), "task": task, "alpha": alpha,
+            "n_items": len(group), "horizon": H, "seasonality": season,
+            "n_variates": int(group[0]["context"].shape[0]),
+            "n_scored": prep["n_scored"], "n_dropped": prep["n_dropped"],
+            "n_unforecastable": n_unforecastable,
+            "step1_MASE": a["MASE"], "step2_MASE": b["MASE"],
+            "step1_WQL": a["WQL"], "step2_WQL": b["WQL"],
+            "MASE_improvement_pct": imp,
+            "win_rate": two_step.win_rate(a, b), "n_identical": ident,
+            "elapsed_s": round(time.time() - t0, 1),
+        })
+    return rows
 
 
 def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
@@ -188,36 +210,44 @@ def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
     rows = []
     for task in list(by_task):
         group = by_task.pop(task)   # freed once this task is scored
-        row = score_task(forecaster, task, group, args, Metrics, two_step)
-        if row is None:
+        task_rows = score_task(forecaster, task, group, args, Metrics, two_step)
+        if not task_rows:
             logger.warning("%s: every item carries an all-NaN variate — skipped",
                            task)
             continue
-        row["benchmark"] = benchmark
-        rows.append(row)
-        totals["identical"] += row["n_identical"]
-        totals["items"] += row["n_items"]
-        if row["n_identical"] == row["n_items"]:
-            # The whole-run refusal below cannot see this: a model that is
-            # blind on SOME tasks still differs on others, so the run passes
-            # while these rows carry a null that is plumbing, not a finding.
-            # Toto-2 is the known case — it reads only the first
-            # ceil(H/patch)-1 patches of a known future, so every task with
-            # H <= 32 gets its future dropped entirely.
-            logger.warning(
-                "  %s: step 2 returned step 1 on ALL %d items (H=%d). This row "
-                "measures nothing — the covariate future did not reach the "
-                "model.", task, row["n_items"], row["horizon"])
-        logger.info("  %-34s n=%-4d(-%d) MASE %.4f -> %.4f  WQL %.4f -> %.4f  "
-                    "win %.0f%%  identical %d/%d", task[:34], row["n_scored"],
-                    row["n_dropped"], row["step1_MASE"], row["step2_MASE"],
-                    row["step1_WQL"], row["step2_WQL"], row["win_rate"] * 100,
-                    row["n_identical"], row["n_items"])
+        for row in task_rows:
+            row["benchmark"] = benchmark
+            rows.append(row)
+            totals["identical"] += row["n_identical"]
+            totals["items"] += row["n_items"]
+            if row["n_identical"] == row["n_items"]:
+                # The whole-run refusal below cannot see this: a model blind on
+                # SOME tasks still differs on others, so the run passes while
+                # these rows carry a null that is plumbing, not a finding.
+                # Toto-2 is the known case — it reads only the first
+                # ceil(H/patch)-1 patches of a known future, so every task with
+                # H <= 32 gets its future dropped entirely.
+                logger.warning(
+                    "  %s (alpha=%g): step 2 returned step 1 on ALL %d items "
+                    "(H=%d). This row measures nothing — the covariate future "
+                    "did not reach the model.", task, row["alpha"],
+                    row["n_items"], row["horizon"])
+            logger.info("  %-30s a=%-4.2f n=%-4d(-%d) MASE %.4f -> %.4f "
+                        "(%+.2f%%)  win %.0f%%  identical %d/%d",
+                        task[:30], row["alpha"], row["n_scored"],
+                        row["n_dropped"], row["step1_MASE"], row["step2_MASE"],
+                        row["MASE_improvement_pct"], row["win_rate"] * 100,
+                        row["n_identical"], row["n_items"])
     return rows
 
 
 def main() -> int:
     args = parse_args()
+    bad = [a for a in args.alpha if not 0.0 <= a <= 1.0]
+    if bad:
+        raise SystemExit(f"--alpha must be in [0, 1]; got {bad}. It is the "
+                         f"share of the covariates' true future in a convex "
+                         f"blend with the model's own forecast of them.")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         datefmt="%H:%M:%S")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -255,6 +285,7 @@ def main() -> int:
     pd.DataFrame(rows).to_csv(dest, index=False)
     (args.out / f"{model_tag}.meta.json").write_text(json.dumps({
         "model_path": str(args.model_path), "quantiles": QUANTILES,
+        "alpha": list(args.alpha),
         "coe_eval_depth": args.coe_eval_depth,
         "identical_items": totals["identical"], "total_items": totals["items"],
         "supports_multivariate": bool(

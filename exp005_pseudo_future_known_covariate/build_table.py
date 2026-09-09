@@ -52,7 +52,8 @@ def build(df: pd.DataFrame) -> pd.DataFrame:
     equally. `n_scored` is the weight the metrics were computed on.
     """
     rows = []
-    for (model, bench), g in df.groupby(["model", "benchmark"], dropna=False):
+    for (model, bench, alpha), g in df.groupby(
+            ["model", "benchmark", "alpha"], dropna=False):
         w = g["n_scored"].to_numpy(float)
         for metric in METRICS:
             a = g[f"step1_{metric}"].to_numpy(float)
@@ -66,7 +67,8 @@ def build(df: pd.DataFrame) -> pd.DataFrame:
             # would let one large-scale task set the sign for the whole row.
             per_task = (a[ok] - b[ok]) / np.where(a[ok] == 0, np.nan, a[ok]) * 100
             rows.append({
-                "model": model, "benchmark": bench, "metric": metric,
+                "model": model, "benchmark": bench, "alpha": float(alpha),
+                "metric": metric,
                 "n_tasks": int(ok.sum()), "n_items": int(w[ok].sum()),
                 f"step1_{metric}": s1, f"step2_{metric}": s2,
                 "improvement_pct": float(np.nansum(per_task * w[ok])
@@ -84,14 +86,14 @@ def render(t: pd.DataFrame) -> str:
         sub = t[t["metric"] == metric]
         if sub.empty:
             continue
-        hdr = (f"{'model':<34}{'bench':<7}{'tasks':>6}{'items':>7}"
+        hdr = (f"{'model':<30}{'bench':<7}{'alpha':>6}{'tasks':>6}{'items':>7}"
                f"{'step1':>10}{'step2':>10}{'improve%':>10}{'win%':>7}{'ident':>7}")
         out += ["", f"── {metric} " + "─" * max(0, len(hdr) - len(metric) - 4),
                 hdr, "-" * len(hdr)]
-        for _, r in sub.sort_values(["model", "benchmark"]).iterrows():
+        for _, r in sub.sort_values(["model", "benchmark", "alpha"]).iterrows():
             out.append(
-                f"{str(r['model'])[-34:]:<34}{r['benchmark']:<7}"
-                f"{r['n_tasks']:>6.0f}{r['n_items']:>7.0f}"
+                f"{str(r['model'])[-30:]:<30}{r['benchmark']:<7}"
+                f"{r['alpha']:>6.2f}{r['n_tasks']:>6.0f}{r['n_items']:>7.0f}"
                 f"{r[f'step1_{metric}']:>10.4f}{r[f'step2_{metric}']:>10.4f}"
                 f"{r['improvement_pct']:>+10.2f}{r['win_rate'] * 100:>7.1f}"
                 f"{r['n_identical']:>7.0f}")
@@ -143,6 +145,47 @@ def plot(t: pd.DataFrame, out_png: Path) -> None:
     plt.close(fig)
 
 
+def alpha_curves(t: pd.DataFrame, out_png: Path) -> None:
+    """MASE, improvement and win rate against alpha — the question's own axis.
+
+    Lines rather than a heatmap: alpha is ordered and the reading is whether
+    the curve is monotone, which a colour ramp hides. One panel per quantity,
+    one line per (model, benchmark).
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    sub = t[t["metric"] == "MASE"].sort_values("alpha")
+    if sub.empty or sub["alpha"].nunique() < 2:
+        return
+    panels = [("step2_MASE", "step-2 MASE (lower is better)"),
+              ("improvement_pct", "MASE improvement vs step 1 (%)"),
+              ("win_rate", "win rate vs step 1")]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
+    for ax, (col, title) in zip(axes, panels):
+        for (model, bench), g in sub.groupby(["model", "benchmark"]):
+            g = g.sort_values("alpha")
+            ax.plot(g["alpha"], g[col], marker="o",
+                    label=f"{str(model).split('/')[-1][:16]}/{bench}")
+        if col == "improvement_pct":
+            ax.axhline(0, color="k", lw=0.8)
+        if col == "win_rate":
+            ax.axhline(0.5, color="k", lw=0.8, ls=":")
+        ax.set_xlabel("alpha  (0 = pseudo covariate future, 1 = oracle)")
+        ax.set_title(title, fontsize=10)
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=7)
+    fig.suptitle("alpha blends the covariates' TRUE future into the model's own "
+                 "forecast of them; the scored target is never oracle. "
+                 "alpha > 0 is label leakage on the covariates — an upper "
+                 "bound, not a score.", fontsize=8, y=0.005)
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__.split("\n")[0],
@@ -158,8 +201,10 @@ def main() -> int:
     table.to_csv(dest, index=False)
     png = args.results / "exp005_improvement.png"
     plot(table, png)
+    apng = args.results / "exp005_alpha.png"
+    alpha_curves(table, apng)
     print(render(table))
-    logger.info("\nwrote %s\nwrote %s", dest, png)
+    logger.info("\nwrote %s\nwrote %s\nwrote %s", dest, png, apng)
     return 0
 
 

@@ -53,6 +53,9 @@
 #   done
 #
 #   # a quick smoke, and tables only
+#   # oracle-vs-pseudo sweep: does a BETTER covariate forecast help?
+#   bash run_exp005.sh --ckpt <ckpt> --alpha "0 0.25 0.5 0.75 1"
+#
 #   bash run_exp005.sh --ckpt amazon/chronos-2 --max-tasks 2 --max-items 16
 #   bash run_exp005.sh --stage table
 #
@@ -77,6 +80,17 @@
 #   --depth N           EO v4 only: --coe-eval-depth. Default 1, which makes a
 #                       K>=2 checkpoint behave as the one-pass model this
 #                       experiment is about. Ignored by the other models.
+#   --alpha "0 0.25 0.5 0.75 1"
+#                       How much of the covariates' TRUE future to blend into
+#                       the model's own forecast of them:
+#                           alpha*oracle + (1-alpha)*pseudo
+#                       0 (the default) is the original pseudo scenario; 1 hands
+#                       the model the real known future for its covariates. The
+#                       SCORED TARGET is never oracle. Every alpha shares one
+#                       step 1, so the baseline cannot drift between columns.
+#                       alpha > 0 is label leakage on the covariates — an upper
+#                       bound on what a perfect covariate forecaster could buy,
+#                       not a score.
 #   --batch-size N      default 32
 #   --max-tasks N       cap tasks per benchmark (smoke runs)
 #   --max-items N       cap items per task
@@ -95,6 +109,7 @@
 #   <out>/<model>.meta.json         supports_multivariate, identical-item count
 #   <out>/exp005_table.csv          pooled per model and benchmark
 #   <out>/exp005_improvement.png    the same as grouped bars
+#   <out>/exp005_alpha.png          MASE / improvement / win rate vs alpha
 #
 # ---------------------------------------------------------------------------
 # A NOTE ON amazon/chronos-2
@@ -146,7 +161,7 @@ DEFAULT_CKPTS=(
     "Datadog/Toto-2.0-313m"
     "/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer/outputs/eo-v4-120M-toto_2080ti/best_checkpoints"
 )
-CKPTS=(); STAGE="all"; DEPTH=1; BATCH=32; OUT=""
+CKPTS=(); STAGE="all"; DEPTH=1; BATCH=32; OUT=""; ALPHA=""
 BENCHMARKS=""; MAX_TASKS=""; MAX_ITEMS=""; MAX_WINDOWS=""
 TASK_SUBSET=""; FEV_DATA=""; GIFT_DATA=""; DRY=""
 
@@ -198,6 +213,7 @@ if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
         ${DRY} "${PY}" "${HERE}/run_eval.py" \
             --model-path "${CKPT}" --repo "${REPO}" --out "${OUT}" \
             --coe-eval-depth "${DEPTH}" --batch-size "${BATCH}" \
+            ${ALPHA:+--alpha ${ALPHA}} \
             ${BENCHMARKS:+--benchmarks ${BENCHMARKS}} \
             ${MAX_TASKS:+--max-tasks ${MAX_TASKS}} \
             ${MAX_ITEMS:+--max-items-per-task ${MAX_ITEMS}} \

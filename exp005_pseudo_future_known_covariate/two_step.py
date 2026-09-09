@@ -96,13 +96,45 @@ def step1_inputs(items) -> list[dict]:
             for it in items]
 
 
+def blend_future(items, cov_future, alpha: float, horizon: int) -> list:
+    """`alpha * oracle + (1 - alpha) * pseudo`, per item, for the covariates.
+
+    ORACLE is the covariate variates' TRUE future, which the benchmark holds as
+    the label and which no honest forecast may see; PSEUDO is step 1's own
+    forecast of them. alpha therefore sweeps from the scenario exp005 measured
+    (alpha = 0, a model fed its own guess) to a known-future upper bound
+    (alpha = 1, a model handed the answer for its covariates). Only the
+    COVARIATES are ever oracle — variate 0, the scored target, is never touched.
+
+    A non-finite oracle value falls back to the pseudo one rather than
+    poisoning the blend: bitbrains carries NaN, and `alpha * nan` would hand the
+    model a NaN where alpha = 0 gave it a number, so the alpha axis would be
+    measuring missingness instead of information.
+    """
+    out = []
+    for it, pseudo in zip(items, cov_future):
+        if not pseudo.size:
+            out.append(pseudo)
+            continue
+        oracle = np.asarray(it["truth"], dtype=np.float32)[1:, :horizon]
+        if oracle.shape != pseudo.shape:
+            raise RuntimeError(
+                f"oracle future is {oracle.shape} but step 1 predicted "
+                f"{pseudo.shape} covariate rows — the two describe different "
+                f"variates and blending them would mix series")
+        good = np.isfinite(oracle)
+        out.append(np.where(good, alpha * oracle + (1.0 - alpha) * pseudo,
+                            pseudo).astype(np.float32))
+    return out
+
+
 def step2_inputs(items, cov_future) -> list[dict]:
     """Variate 0 as the target, the rest as known-future covariates.
 
-    `cov_future[i]` is `(n_variates - 1, H)` — step 1's point forecast for the
-    variates being demoted. Their PAST comes from the same context the model
-    already had, so the only new information is the future half, which is the
-    whole manipulation.
+    `cov_future[i]` is `(n_variates - 1, H)` — the future handed to the demoted
+    variates, pseudo or blended (see `blend_future`). Their PAST comes from the
+    same context the model already had, so the only new information is the
+    future half, which is the whole manipulation.
     """
     out = []
     for it, fut in zip(items, cov_future):
@@ -137,15 +169,16 @@ def _check_rows(out, items, label: str) -> None:
             f"wrong series. See `forecastable`.")
 
 
-def run_two_step(forecaster, items, horizon: int, quantile_levels,
-                 batch_size: int = 32):
-    """``(step1_target_q, step2_target_q, n_identical)`` over ``items``.
+def run_step1(forecaster, items, horizon: int, quantile_levels,
+              batch_size: int = 32):
+    """``(target1_q, cov_future)`` — the no-covariate-future baseline.
 
-    Both arrays are ``(len(items), Q, horizon)`` and both are variate 0 only.
-    Step 1's other variates are consumed as the covariate futures and are never
-    scored — they are the instrument, not the measurement.
+    ALPHA-INDEPENDENT, and computed once per task for that reason: the blend
+    only ever touches what step 2 is handed, so a step 1 recomputed per alpha
+    would cost a forward per alpha and give the sweep a baseline that could
+    drift between its own columns.
 
-    Both steps' inputs go through the model's own NaN policy
+    Inputs go through the model's own NaN policy
     (`BaseForecaster.missing_value_policy`, applied by `_apply_missing_policy`),
     which is what every published run in tsm-trainer feeds. Skipping it is not
     neutral: on `uci_air_quality_1D` an unwanted zero-fill moved Chronos-2's
@@ -154,7 +187,6 @@ def run_two_step(forecaster, items, horizon: int, quantile_levels,
     from benchmarks.fev_bench import _apply_missing_policy
 
     policy = getattr(forecaster, "missing_value_policy", "keep")
-
     s1 = forecaster.predict_quantiles_tasks(
         _apply_missing_policy(step1_inputs(items), policy),
         prediction_length=horizon, quantile_levels=quantile_levels,
@@ -170,10 +202,25 @@ def run_two_step(forecaster, items, horizon: int, quantile_levels,
     _check_rows(s1, items, "step 1")
     target1 = np.stack([t[0] for t in s1])
     cov_future = [median_of(t[1:], quantile_levels) for t in s1]
-    del s1                      # (V, Q, H) per item; nothing below reads it
+    return target1, cov_future
 
+
+def run_step2(forecaster, items, cov_future, target1, alpha: float,
+              horizon: int, quantile_levels, batch_size: int = 32):
+    """``(target2_q, n_identical)`` for one alpha.
+
+    `n_identical` counts items whose step-2 forecast equals step 1's to
+    floating point. At alpha = 0 that is exp005's original control — a model
+    that ignores `future_covariates` produces an all-identical column, which
+    reads as "no gain" but is really "the manipulation never reached the
+    model".
+    """
+    from benchmarks.fev_bench import _apply_missing_policy
+
+    policy = getattr(forecaster, "missing_value_policy", "keep")
+    fut = blend_future(items, cov_future, alpha, horizon)
     s2 = forecaster.predict_quantiles_tasks(
-        _apply_missing_policy(step2_inputs(items, cov_future), policy),
+        _apply_missing_policy(step2_inputs(items, fut), policy),
         prediction_length=horizon, quantile_levels=quantile_levels,
         batch_size=batch_size)
     s2 = [np.asarray(t) for t in s2]
@@ -181,10 +228,9 @@ def run_two_step(forecaster, items, horizon: int, quantile_levels,
     # exactly one row.
     _check_rows(s2, [{"context": np.zeros((1, 1))}] * len(items), "step 2")
     target2 = np.stack([t[0] for t in s2])
-
     identical = int(np.isclose(target1, target2, rtol=1e-6, atol=1e-8)
                     .all(axis=(1, 2)).sum())
-    return target1, target2, identical
+    return target2, identical
 
 
 def prepare(items, horizon: int, seasonal_period: int, Metrics) -> dict:
