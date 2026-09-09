@@ -96,8 +96,8 @@ def step1_inputs(items) -> list[dict]:
             for it in items]
 
 
-def blend_future(items, cov_future, alpha: float, horizon: int) -> list:
-    """`alpha * oracle + (1 - alpha) * pseudo`, per item, for the covariates.
+def blend_future(items, cov_future, alpha: float, horizon: int):
+    """``(futures, n_substituted)`` — `alpha*oracle + (1-alpha)*pseudo`.
 
     ORACLE is the covariate variates' TRUE future, which the benchmark holds as
     the label and which no honest forecast may see; PSEUDO is step 1's own
@@ -106,12 +106,30 @@ def blend_future(items, cov_future, alpha: float, horizon: int) -> list:
     (alpha = 1, a model handed the answer for its covariates). Only the
     COVARIATES are ever oracle — variate 0, the scored target, is never touched.
 
-    A non-finite oracle value falls back to the pseudo one rather than
-    poisoning the blend: bitbrains carries NaN, and `alpha * nan` would hand the
-    model a NaN where alpha = 0 gave it a number, so the alpha axis would be
-    measuring missingness instead of information.
+    THE BLEND IS ONLY DEFINED WHERE BOTH SIDES ARE FINITE. Writing the product
+    unconditionally is wrong in both directions, because IEEE makes
+    `0 * nan = nan`:
+
+      * a non-finite ORACLE would poison a cell where alpha = 0 had a number,
+        so the axis would measure missingness instead of information;
+      * a non-finite PSEUDO would poison a cell even at alpha = 1, so the
+        "oracle" endpoint would not be the oracle — which is the bound the whole
+        sweep is read against.
+
+    So, cellwise:
+
+      both finite            blend
+      oracle finite only     pseudo at alpha = 0, oracle above it
+      oracle not finite      pseudo
+
+    The middle rule is deliberately discontinuous at 0: alpha = 0 has to
+    reproduce the pure-pseudo scenario exactly, NaN included, because that is
+    the published result the sweep is anchored to — while any alpha above 0 has
+    real information in hand and withholding it would understate the bound.
+    `n_substituted` counts those cells so the substitution is reported rather
+    than hidden.
     """
-    out = []
+    out, n_sub = [], 0
     for it, pseudo in zip(items, cov_future):
         if not pseudo.size:
             out.append(pseudo)
@@ -122,10 +140,15 @@ def blend_future(items, cov_future, alpha: float, horizon: int) -> list:
                 f"oracle future is {oracle.shape} but step 1 predicted "
                 f"{pseudo.shape} covariate rows — the two describe different "
                 f"variates and blending them would mix series")
-        good = np.isfinite(oracle)
-        out.append(np.where(good, alpha * oracle + (1.0 - alpha) * pseudo,
-                            pseudo).astype(np.float32))
-    return out
+        o_ok, p_ok = np.isfinite(oracle), np.isfinite(pseudo)
+        blend = np.where(o_ok & p_ok, alpha * oracle + (1.0 - alpha) * pseudo,
+                         pseudo)
+        only_oracle = o_ok & ~p_ok
+        if alpha > 0.0 and only_oracle.any():
+            blend = np.where(only_oracle, oracle, blend)
+            n_sub += int(only_oracle.sum())
+        out.append(blend.astype(np.float32))
+    return out, n_sub
 
 
 def step2_inputs(items, cov_future) -> list[dict]:
@@ -154,11 +177,21 @@ def median_of(q_arr, quantile_levels) -> np.ndarray:
     return np.asarray(q_arr)[:, quantile_levels.index(0.5), :]
 
 
-def _check_rows(out, items, label: str) -> None:
-    """Every task must return one row per variate it was given."""
-    bad = [(i, o.shape, np.asarray(it["context"]).shape[0])
-           for i, (o, it) in enumerate(zip(out, items))
-           if o.shape[0] != np.asarray(it["context"]).shape[0]]
+def _check_rows(out, expected, label: str) -> None:
+    """Every task must come back, and with one row per variate it was given.
+
+    `expected` is the per-task row count. The OUTER length is checked first: a
+    forecaster that returns fewer tasks than it was handed would otherwise pass
+    on the common prefix, because `zip` stops at the shorter side — and every
+    consumer downstream indexes by position.
+    """
+    if len(out) != len(expected):
+        raise RuntimeError(
+            f"{label}: handed {len(expected)} task(s) but the model returned "
+            f"{len(out)}. Everything downstream is positional, so a missing "
+            f"task would shift every score onto the wrong series.")
+    bad = [(i, o.shape, want) for i, (o, want) in enumerate(zip(out, expected))
+           if o.shape[0] != want]
     if bad:
         i, got, want = bad[0]
         raise RuntimeError(
@@ -199,7 +232,8 @@ def run_step1(forecaster, items, horizon: int, quantile_levels,
     # renumbered them — `t[0]` would then be a different series than the one
     # scored against. `forecastable()` removes the known cause (an all-NaN
     # variate); this catches any other.
-    _check_rows(s1, items, "step 1")
+    _check_rows(s1, [np.asarray(it["context"]).shape[0] for it in items],
+                "step 1")
     target1 = np.stack([t[0] for t in s1])
     cov_future = [median_of(t[1:], quantile_levels) for t in s1]
     return target1, cov_future
@@ -207,7 +241,7 @@ def run_step1(forecaster, items, horizon: int, quantile_levels,
 
 def run_step2(forecaster, items, cov_future, target1, alpha: float,
               horizon: int, quantile_levels, batch_size: int = 32):
-    """``(target2_q, n_identical)`` for one alpha.
+    """``(target2_q, n_identical, n_substituted)`` for one alpha.
 
     `n_identical` counts items whose step-2 forecast equals step 1's to
     floating point. At alpha = 0 that is exp005's original control — a model
@@ -218,7 +252,7 @@ def run_step2(forecaster, items, cov_future, target1, alpha: float,
     from benchmarks.fev_bench import _apply_missing_policy
 
     policy = getattr(forecaster, "missing_value_policy", "keep")
-    fut = blend_future(items, cov_future, alpha, horizon)
+    fut, n_substituted = blend_future(items, cov_future, alpha, horizon)
     s2 = forecaster.predict_quantiles_tasks(
         _apply_missing_policy(step2_inputs(items, fut), policy),
         prediction_length=horizon, quantile_levels=quantile_levels,
@@ -226,11 +260,11 @@ def run_step2(forecaster, items, cov_future, target1, alpha: float,
     s2 = [np.asarray(t) for t in s2]
     # Step 2 hands the model ONE target, so every task must come back with
     # exactly one row.
-    _check_rows(s2, [{"context": np.zeros((1, 1))}] * len(items), "step 2")
+    _check_rows(s2, [1] * len(items), "step 2")
     target2 = np.stack([t[0] for t in s2])
     identical = int(np.isclose(target1, target2, rtol=1e-6, atol=1e-8)
                     .all(axis=(1, 2)).sum())
-    return target2, identical
+    return target2, identical, n_substituted
 
 
 def prepare(items, horizon: int, seasonal_period: int, Metrics) -> dict:

@@ -165,7 +165,7 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
     rows = []
     for alpha in args.alpha:
         with torch.no_grad():
-            s2, ident = two_step.run_step2(
+            s2, ident, n_sub = two_step.run_step2(
                 forecaster, group, cov_future, s1, alpha, H, QUANTILES,
                 batch_size=args.batch_size)
         b = two_step.score(s2, prep, QUANTILES, Metrics)
@@ -181,6 +181,10 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
             "step1_WQL": a["WQL"], "step2_WQL": b["WQL"],
             "MASE_improvement_pct": imp,
             "win_rate": two_step.win_rate(a, b), "n_identical": ident,
+            # Cells where step 1 predicted a non-finite covariate future and
+            # the oracle had a real value; substituted for alpha > 0, reported
+            # rather than hidden. See two_step.blend_future.
+            "n_oracle_substituted": n_sub,
             "elapsed_s": round(time.time() - t0, 1),
         })
     return rows
@@ -218,8 +222,9 @@ def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
         for row in task_rows:
             row["benchmark"] = benchmark
             rows.append(row)
-            totals["identical"] += row["n_identical"]
-            totals["items"] += row["n_items"]
+            t = totals.setdefault(row["alpha"], {"identical": 0, "items": 0})
+            t["identical"] += row["n_identical"]
+            t["items"] += row["n_items"]
             if row["n_identical"] == row["n_items"]:
                 # The whole-run refusal below cannot see this: a model blind on
                 # SOME tasks still differs on others, so the run passes while
@@ -267,19 +272,27 @@ def main() -> int:
         if args.num_task_subsets > 1 else "")
     forecaster = build_forecaster(args)
 
-    rows, totals = [], {"identical": 0, "items": 0}
+    rows, totals = [], {}
     for benchmark in args.benchmarks:
         rows += run_benchmark(forecaster, benchmark, args, Metrics, two_step,
                               load_items, totals)
 
     if not rows:
         raise SystemExit("no rows scored — check --benchmarks and the data roots")
-    if totals["identical"] == totals["items"]:
+    # EVERY alpha, not the pooled total: a run where alpha = 0 is fully
+    # identical but alpha = 1 is not has measured something, and pooling would
+    # hide which end of the axis reached the model.
+    blind = [a for a, t in totals.items() if t["identical"] == t["items"]]
+    if len(blind) == len(totals):
+        n = sum(t["items"] for t in totals.values()) // max(1, len(totals))
         raise SystemExit(
-            f"step 2 returned step 1 on ALL {totals['items']} items. The "
-            f"pseudo-known-future covariates never changed the forecast, so "
-            f"this run measures nothing — it is not a null result. Check that "
-            f"the model consumes future_covariates.")
+            f"step 2 returned step 1 on ALL {n} items at EVERY alpha "
+            f"{sorted(totals)}. The known-future covariates never changed the "
+            f"forecast, so this run measures nothing — it is not a null "
+            f"result. Check that the model consumes future_covariates.")
+    if blind:
+        logger.warning("alpha %s produced no change at all — the covariate "
+                       "future did not reach the model there", sorted(blind))
     import pandas as pd
     dest = args.out / f"{model_tag}.csv"
     pd.DataFrame(rows).to_csv(dest, index=False)
@@ -287,12 +300,13 @@ def main() -> int:
         "model_path": str(args.model_path), "quantiles": QUANTILES,
         "alpha": list(args.alpha),
         "coe_eval_depth": args.coe_eval_depth,
-        "identical_items": totals["identical"], "total_items": totals["items"],
+        "per_alpha": {str(a): t for a, t in sorted(totals.items())},
         "supports_multivariate": bool(
             getattr(forecaster, "supports_multivariate", False)),
     }, indent=1))
-    logger.info("wrote %s (%d rows, %d/%d items identical)", dest, len(rows),
-                totals["identical"], totals["items"])
+    logger.info("wrote %s (%d rows; identical/items per alpha: %s)", dest,
+                len(rows), {a: f"{t['identical']}/{t['items']}"
+                            for a, t in sorted(totals.items())})
     return 0
 
 
