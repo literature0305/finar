@@ -166,6 +166,53 @@ horizon carrying NaN compared unequal to *itself* and re-registering the same
 series in a later window marked its own fingerprint ambiguous. Fixed with
 `equal_nan=True` — it was manufacturing misses that are now fatal.
 
+### Error accumulation: raising the depth
+
+Every depth $1..N$ is scored and reported, so `--depth` is also the knob for
+asking whether feeding the truth back accumulates error or settles:
+
+```bash
+bash run_exp004.sh --ckpt <ckpt> --alpha "0.0 0.5 1.0" --depth 16
+bash run_exp004.sh --stage table --out <results dir>     # no --ckpt needed
+```
+
+Verified at depth 16 on a $K=2$ checkpoint: 16 passes run without error, GPU
+peak 0.61 GB against 0.57 GB at depth 4, and `repeat1..repeat16` are all
+recorded. On `ETT_15T` at $\alpha = 0.5$ the MASE **converges rather than
+diverging** — 0.9293, 0.7566, 0.7396, 0.7369, then a $\pm 0.0003$ two-cycle
+oscillation through iteration 16.
+
+`--stage table` reads the depth from `<out>/manifest.json`. It used to take it
+from the shell's `--depth`, which defaults to 2: tabling a depth-16 run without
+repeating `--depth 16` silently reported iterations 1 and 2 and discarded the
+other fourteen.
+
+### The alpha x iteration surface
+
+`exp004_alpha_iteration.csv` and `.png` carry one row and one cell per
+(benchmark, alpha, iteration): MASE, a win rate against iteration 1, and
+`blended_MASE`.
+
+**The win rate is over TASKS, not items,** and the column name says so
+(`win_rate_tasks_vs_iter1`). Per-item would be the better statistic and is not
+reachable cheaply: fev-bench scores its repeat sets through
+`_compute_metrics_direct` and GIFT-Eval through `score_and_plot_repeats`, the
+two share no seam, and the second discards `mase_per_item` before returning.
+Item level would mean two hooks into read-only internals, one of which
+`fev_bench.py` already documents as fragile. The task denominator is 26
+(fev multivariate) to 97 (GIFT-Eval).
+
+**`blended_MASE` is an identity, not a measurement.** It is the MASE of the
+intermediate the next pass is handed, $(1-\alpha)p + \alpha y$, and since
+MASE is $\overline{|y - \cdot|}/s$,
+
+$$\overline{|y - ((1-\alpha)p + \alpha y)|} = (1-\alpha)\,\overline{|y - p|}$$
+
+so the column equals $(1-\alpha) \times$ `MASE` exactly, by construction, and
+cannot fail. It is reported because it is what pass $n+1$ actually sees.
+Whether the blend reached the model at all is answered by `truth_hits` in
+`truth.json`, never by this column.
+
 ### What comes out
 
 | path | contents |

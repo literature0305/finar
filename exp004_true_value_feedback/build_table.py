@@ -28,6 +28,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 from pathlib import Path
@@ -88,6 +89,117 @@ def _win_rate(lo: np.ndarray, hi: np.ndarray) -> float:
         return float("nan")
     a, b = lo[both], hi[both]
     return float(((b < a) + 0.5 * (b == a)).mean())
+
+
+def run_depth(root: Path) -> int:
+    """The depth the run was scored at, from its own manifest.
+
+    Read rather than re-supplied. `run_exp004.sh --stage table` used to pass its
+    own `--depth`, which defaults to 2: scoring at depth 16 and then building
+    the table without repeating `--depth 16` tabled iterations 1 and 2 and threw
+    the other fourteen away, with no error. The number is already on disk.
+    """
+    man = root / "manifest.json"
+    if not man.is_file():
+        raise SystemExit(
+            f"{man} is missing, so the depth this run was scored at is unknown. "
+            f"Pass --iters LO HI explicitly.")
+    d = int(json.loads(man.read_text()).get("coe_eval_depth", 0))
+    if d < 2:
+        raise SystemExit(f"{man} records coe_eval_depth={d}; nothing to contrast")
+    return d
+
+
+def alpha_iteration_tables(loaded: dict, depth: int) -> pd.DataFrame:
+    """MASE and task-level win rate for every (benchmark, alpha, iteration).
+
+    Long format, one row per cell, so the two heatmaps and the csv are the same
+    numbers.
+
+    THE WIN RATE IS OVER TASKS, NOT ITEMS, and the column says so. Per-item
+    would be the better statistic and is not available: fev-bench scores its
+    repeat sets through `_compute_metrics_direct` and GIFT-Eval through
+    `score_and_plot_repeats`, the two share no seam, and the second discards
+    `mase_per_item` before returning. Reaching item level means two hooks into
+    read-only internals, one of which that file already documents as fragile.
+    The task denominator is 26 (fev multivariate) to 97 (GIFT-Eval), which is
+    small but not decorative.
+
+    `blended_MASE` is `(1 - alpha) * MASE`, the MASE of the intermediate the
+    next pass is handed. It is an ALGEBRAIC IDENTITY, not a measurement:
+    the blend is `(1-a)*p + a*y` and MASE is `mean|y - .|/s`, so
+    `mean|y - ((1-a)p + a*y)| = (1-a)*mean|y - p|` exactly. It is reported
+    because it is the quantity the second pass actually sees, and it cannot
+    fail — a check of whether the blend reached the model is `truth_hits`
+    in truth.json, not this column.
+    """
+    rows = []
+    for bench, runs in loaded.items():
+        for alpha, df in sorted(runs.items()):
+            cols = depth_columns(df)
+            base = cols.get(1, {}).get("MASE")
+            if base is None:
+                continue
+            b = pd.to_numeric(df[base], errors="coerce").to_numpy(float)
+            for it in range(1, depth + 1):
+                c = cols.get(it, {}).get("MASE")
+                if c is None:
+                    continue
+                v = pd.to_numeric(df[c], errors="coerce").to_numpy(float)
+                mase = float(np.nanmean(v)) if np.isfinite(v).any() else np.nan
+                rows.append({
+                    "benchmark": bench, "alpha": alpha, "iteration": it,
+                    "MASE": mase,
+                    "blended_MASE": (1.0 - alpha) * mase,
+                    "win_rate_tasks_vs_iter1": (
+                        1.0 if it == 1 else _win_rate(b, v)),
+                    "n_tasks": int((np.isfinite(b) & np.isfinite(v)).sum()),
+                })
+    return pd.DataFrame(rows)
+
+
+def alpha_iteration_heatmaps(t: pd.DataFrame, dest: Path) -> None:
+    """One row of panels per benchmark: MASE, then win rate. x = iteration,
+    y = alpha, as asked."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    benches = sorted(t["benchmark"].unique())
+    panels = [("MASE", "viridis_r", "MASE (lower is better)"),
+              ("win_rate_tasks_vs_iter1", "RdBu",
+               "task win rate vs iteration 1")]
+    fig, axes = plt.subplots(len(benches), 2, squeeze=False,
+                             figsize=(12, 3.6 * len(benches)))
+    for row, bench in enumerate(benches):
+        sub = t[t["benchmark"] == bench]
+        for col, (value, cmap, title) in enumerate(panels):
+            ax = axes[row][col]
+            piv = sub.pivot_table(index="alpha", columns="iteration",
+                                  values=value, aggfunc="mean")
+            kw = {"vmin": 0.0, "vmax": 1.0} if col else {}
+            im = ax.imshow(piv.values, aspect="auto", cmap=cmap, **kw)
+            ax.set_xticks(range(len(piv.columns)))
+            ax.set_xticklabels(piv.columns, fontsize=7)
+            ax.set_yticks(range(len(piv.index)))
+            ax.set_yticklabels([f"{a:g}" for a in piv.index])
+            ax.set_xlabel("iteration"); ax.set_ylabel("alpha")
+            ax.set_title(f"{bench}: {title}", fontsize=10)
+            for i in range(piv.shape[0]):
+                for j in range(piv.shape[1]):
+                    v = piv.values[i, j]
+                    if np.isfinite(v):
+                        ax.text(j, i, f"{v:.3f}", ha="center", va="center",
+                                fontsize=6,
+                                color="k" if col else "w")
+            fig.colorbar(im, ax=ax, fraction=0.046)
+    fig.suptitle("alpha = how much of the TRUE horizon pass n was handed; "
+                 "alpha > 0 is label leakage and an upper bound, not a score",
+                 fontsize=9, y=0.005)
+    fig.tight_layout()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(dest, dpi=140, bbox_inches="tight")
+    plt.close(fig)
 
 
 def load(root: Path) -> dict[str, dict[float, pd.DataFrame]]:
@@ -252,12 +364,16 @@ def main() -> int:
         description=__doc__.split("\n")[0],
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("results", type=Path)
-    p.add_argument("--iters", nargs=2, type=int, default=[1, 2],
-                   metavar=("LO", "HI"))
+    p.add_argument("--iters", nargs=2, type=int, default=None,
+                   metavar=("LO", "HI"),
+                   help="depths to contrast. Default: 1 and the depth the run "
+                        "was actually scored at, read from manifest.json — "
+                        "passing a HI the run never reached silently tables a "
+                        "shallower experiment than the one that ran.")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    lo, hi = args.iters
+    lo, hi = args.iters if args.iters else (1, run_depth(args.results))
     loaded = load(args.results)
     if not loaded:
         raise SystemExit(
@@ -274,7 +390,20 @@ def main() -> int:
     png = args.results / "exp004_improvement.png"
     plot(table, png, lo, hi)
     print(render(table, lo, hi))
-    logger.info("\nwrote %s\nwrote %s", dest, png)
+
+    ai = alpha_iteration_tables(loaded, hi)
+    ai_csv = args.results / "exp004_alpha_iteration.csv"
+    ai.to_csv(ai_csv, index=False)
+    ai_png = args.results / "exp004_alpha_iteration.png"
+    alpha_iteration_heatmaps(ai, ai_png)
+    for bench in sorted(ai["benchmark"].unique()):
+        sub = ai[ai["benchmark"] == bench]
+        piv = sub.pivot_table(index="alpha", columns="iteration", values="MASE")
+        print(f"\n── {bench}: MASE by alpha x iteration "
+              f"(n={int(sub['n_tasks'].max())} tasks) ──")
+        print(piv.to_string(float_format=lambda v: f"{v:.4f}"))
+    logger.info("\nwrote %s\nwrote %s\nwrote %s\nwrote %s",
+                dest, png, ai_csv, ai_png)
     return 0
 
 

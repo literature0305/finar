@@ -35,7 +35,10 @@
 #   bash run_exp004.sh --ckpt <ckpt> --alpha "0.0 0.25 0.5 0.75 1.0"
 #   bash run_exp004.sh --ckpt <ckpt> --benchmarks fev
 #   bash run_exp004.sh --ckpt <ckpt> --task-subset "0 4"   # slice 0 of 4
-#   bash run_exp004.sh --ckpt <ckpt> --stage table         # table only
+#   bash run_exp004.sh --stage table --out <results dir>   # table only, no ckpt
+#
+#   # error accumulation: score every depth 1..16 and read the trajectory
+#   bash run_exp004.sh --ckpt <ckpt> --alpha "0.0 0.5 1.0" --depth 16
 #
 # Long runs: detach, since an ssh drop kills the job.
 #   nohup bash run_exp004.sh --ckpt <ckpt> > exp004.log 2>&1 &
@@ -58,7 +61,13 @@
 #                       Default `multivariate`: every variate is then a target,
 #                       so "the truth is fed back for every variate" has no
 #                       covariate exception.
-#   --depth N           --coe-eval-depth, default 2 (must be >= 2)
+#   --depth N           --coe-eval-depth, default 2 (must be >= 2). Every depth
+#                       1..N is scored and reported, so this is also the knob
+#                       for the error-accumulation sweep: raise it and read the
+#                       MASE trajectory across iterations. Verified working at
+#                       16 on a K=2 checkpoint (GPU peak 0.61 GB, vs 0.57 GB at
+#                       4) — a depth above the trained one is extrapolation,
+#                       recorded and not refused.
 #   --batch-size N      default 64
 #   --out PATH          results dir, default ./results/<ckpt basename>
 #   --task-subset "i n" score only task slice i of n. GIFT-Eval does not fit in
@@ -119,10 +128,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -d "${REPO}" ]] || { echo "--repo ${REPO} is not a directory" >&2; exit 2; }
-[[ -n "${CKPT}" ]] || { echo "--ckpt is required" >&2; exit 2; }
 case "${STAGE}" in eval|table|all) ;; *)
     echo "--stage must be eval, table or all (got ${STAGE})" >&2; exit 2 ;;
 esac
+# Required only where it is used. --stage table reads a finished --out and
+# never loads a model, so demanding a checkpoint there forced a dummy path.
+if [[ "${STAGE}" != "table" ]]; then
+    [[ -n "${CKPT}" ]] || { echo "--ckpt is required for --stage ${STAGE}" >&2; exit 2; }
+else
+    [[ -n "${OUT}" || -n "${CKPT}" ]] || {
+        echo "--stage table needs --out (the results dir to table) or --ckpt" >&2
+        exit 2; }
+fi
 PY="${PYTHON:-${REPO}/.venv/bin/python}"
 [[ -x "${PY}" ]] || PY="$(command -v python3)"
 [[ -x "${PY}" ]] || { echo "no python found (tried ${REPO}/.venv/bin/python)" >&2; exit 1; }
@@ -145,7 +162,10 @@ fi
 
 if [[ "${STAGE}" == "table" || "${STAGE}" == "all" ]]; then
     note "=== table + figure -> ${OUT}"
-    ${DRY} "${PY}" "${HERE}/build_table.py" "${OUT}" --iters 1 "${DEPTH}"
+    # No --iters: build_table.py reads the depth the run was scored at from
+    # <out>/manifest.json. Passing ${DEPTH} here tabled iterations 1..2 of a
+    # depth-16 run whenever --stage table was invoked without repeating --depth.
+    ${DRY} "${PY}" "${HERE}/build_table.py" "${OUT}"
 fi
 
 note "done. results under ${OUT}"
