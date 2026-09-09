@@ -209,8 +209,11 @@ def main() -> int:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     add_repo_to_path(args.repo)
-    from truth_patch import TruthStore, capture_truth, truth_feedback  # noqa
+    from truth_patch import (TruthStore, capture_truth,  # noqa
+                             require_repo_support, truth_feedback)
 
+    # Before the checkpoint is loaded, not from inside the patch mid-sweep.
+    require_repo_support()
     eo = require_coe(args.model_path)
 
     from run_benchmark import load_forecaster  # noqa: E402

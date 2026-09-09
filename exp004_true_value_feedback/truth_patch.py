@@ -360,6 +360,60 @@ def _row_truth(inputs, store: TruthStore):
     return torch.from_numpy(buf)
 
 
+#: The tsm-trainer commit that introduced the prediction-space helpers this
+#: module blends through. Named in the error so the fix is one `git log` away.
+_REQUIRED_COMMIT = "a53691ba (2026-09-07, 'feat(eo-v4): a TimesFM-3.0 arm')"
+
+#: What `truth_feedback` reaches for, and where. Checked BEFORE the model is
+#: loaded, because the alternative is what this check exists to stop: an
+#: ImportError raised from inside the patch, one benchmark into an alpha sweep,
+#: after minutes of checkpoint loading — and raised identically for the
+#: alpha=0.0 arm, which does no blending at all and looks like it should be safe.
+_REQUIRED = (
+    ("aed.model_base", ("to_pred_space",)),
+    ("aed.eo_pipeline", ("_row_budget_chunks",)),
+)
+#: `instance_norm` is deliberately NOT here: it is an INSTANCE attribute, so
+#: `hasattr(EOModelV4, ...)` is False even on a good checkout and the check
+#: would refuse every repo. It predates all of these anyway.
+_REQUIRED_MODEL_ATTRS = ("_coe_write_back", "_pred_shift", "_across",
+                         "_crosses_scales")
+
+
+def require_repo_support() -> None:
+    """Refuse a repo whose EO v4 predates the helpers this experiment blends with.
+
+    `to_pred_space`, `_pred_shift`, `_across` and `_crosses_scales` all arrived
+    in ONE commit; a checkout older than it has none of them, and there is no
+    fallback to write — the older write-back handles prediction-space
+    coordinates differently, so blending the truth there would need different
+    arithmetic, not a different import.
+    """
+    import importlib
+
+    missing = []
+    for mod_name, names in _REQUIRED:
+        try:
+            mod = importlib.import_module(mod_name)
+        except ImportError as e:
+            raise SystemExit(f"cannot import {mod_name} from --repo: {e}")
+        missing += [f"{mod_name}.{n}" for n in names if not hasattr(mod, n)]
+    try:
+        from aed.eo_model_v4 import EOModelV4
+    except ImportError as e:
+        raise SystemExit(f"cannot import aed.eo_model_v4 from --repo: {e}")
+    missing += [f"EOModelV4.{n}" for n in _REQUIRED_MODEL_ATTRS
+                if not hasattr(EOModelV4, n)]
+    if missing:
+        raise SystemExit(
+            f"this --repo checkout is missing {', '.join(missing)}.\n"
+            f"They arrived together in {_REQUIRED_COMMIT}, and exp004 blends "
+            f"the truth in the prediction space they define — an older "
+            f"checkout needs different arithmetic, not a different import.\n"
+            f"Update the tsm-trainer checkout --repo points at, or point "
+            f"--repo at one at or after that commit.")
+
+
 @contextlib.contextmanager
 def truth_feedback(pipeline, alpha: float, store: TruthStore):
     """Blend the truth into what pass 2 is handed, for the duration of a block.

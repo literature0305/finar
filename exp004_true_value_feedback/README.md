@@ -109,6 +109,20 @@ arms.
 covariate task only target rows receive truth: a known-future covariate's
 future is already observed, and a past-only covariate's is not scored.
 
+### Repo requirement
+
+`--repo` must point at a tsm-trainer checkout at or after **`a53691ba`**
+(2026-09-07). `to_pred_space`, `_pred_shift`, `_across` and `_crosses_scales`
+all arrived in that one commit, and the blend is defined in the prediction
+space they establish — an older checkout does not need a different import, it
+needs different arithmetic, so there is no fallback to write.
+
+`run_eval.py` checks this **before the checkpoint is loaded** and names the
+commit. Without the check the failure was an `ImportError` raised from inside
+the patch, one benchmark into an alpha sweep, minutes after loading — and it
+fired for the $\alpha = 0$ arm too, which does no blending and looks like it
+should be immune.
+
 ### What comes out
 
 | path | contents |
