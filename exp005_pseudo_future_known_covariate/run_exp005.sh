@@ -52,10 +52,10 @@
 #       bash run_exp005.sh --ckpt "Datadog/Toto-2.0-$S"
 #   done
 #
-#   # a quick smoke, and tables only
 #   # oracle-vs-pseudo sweep: does a BETTER covariate forecast help?
 #   bash run_exp005.sh --ckpt <ckpt> --alpha "0 0.25 0.5 0.75 1"
 #
+#   # a quick smoke, and tables only
 #   bash run_exp005.sh --ckpt amazon/chronos-2 --max-tasks 2 --max-items 16
 #   bash run_exp005.sh --stage table
 #
@@ -106,7 +106,8 @@
 # WHAT COMES OUT
 # ---------------------------------------------------------------------------
 #   <out>/<model>.csv               per task: step1/step2 MASE, WQL, win rate
-#   <out>/<model>.meta.json         supports_multivariate, identical-item count
+#   <out>/<model>.meta.json         supports_multivariate, alpha grid,
+#                                   identical/items per alpha
 #   <out>/exp005_table.csv          pooled per model and benchmark
 #   <out>/exp005_improvement.png    the same as grouped bars
 #   <out>/exp005_alpha.png          MASE / improvement / win rate vs alpha
@@ -172,6 +173,7 @@ while [[ $# -gt 0 ]]; do
         --stage)       STAGE="$2";      shift 2 ;;
         --depth)       DEPTH="$2";      shift 2 ;;
         --batch-size)  BATCH="$2";      shift 2 ;;
+        --alpha)       ALPHA="$2";      shift 2 ;;
         --out)         OUT="$2";        shift 2 ;;
         --benchmarks)  BENCHMARKS="$2"; shift 2 ;;
         --max-tasks)   MAX_TASKS="$2";  shift 2 ;;
@@ -203,8 +205,15 @@ note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     for CKPT in "${CKPTS[@]}"; do
         TAG="$(basename "${CKPT}")"
-        if [[ -f "${OUT}/${TAG}.csv" ]]; then
-            note "SKIP ${CKPT} — ${OUT}/${TAG}.csv exists"
+        # The alpha grid is part of the identity of a run, not just of its
+        # rows: keyed on the model alone, a sweep requested after a default
+        # --alpha 0 run was skipped with "csv exists" and never happened.
+        if [[ -f "${OUT}/${TAG}.csv" ]] \
+           && "${PY}" -c "import json,sys
+m=json.load(open(sys.argv[1])); want=[float(x) for x in sys.argv[2].split()]
+sys.exit(0 if set(want) <= set(m.get('alpha', [0.0])) else 1)" \
+                "${OUT}/${TAG}.meta.json" "${ALPHA:-0}" 2>/dev/null; then
+            note "SKIP ${CKPT} — ${OUT}/${TAG}.csv already covers alpha ${ALPHA:-0}"
             continue
         fi
         note "=== ${CKPT}"

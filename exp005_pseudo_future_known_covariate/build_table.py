@@ -26,10 +26,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from two_step import improvement_pct  # noqa: E402
 
 logger = logging.getLogger("finar_exp005_table")
 
@@ -41,7 +45,16 @@ def load(root: Path) -> pd.DataFrame:
               if not c.name.endswith("_table.csv")]
     if not frames:
         raise SystemExit(f"no per-model csv under {root}")
-    return pd.concat(frames, ignore_index=True)
+    out = pd.concat(frames, ignore_index=True)
+    # ADDITIVE, so the published pre-alpha results still table: a run from
+    # before --alpha existed has no such column, and grouping on it KeyErrors
+    # on exactly the csvs the README's verification table reports.
+    if "alpha" not in out.columns:
+        out["alpha"] = 0.0
+    for c in ("n_unforecastable", "n_oracle_substituted", "n_same_as_prev_alpha"):
+        if c not in out.columns:
+            out[c] = 0
+    return out
 
 
 def build(df: pd.DataFrame) -> pd.DataFrame:
@@ -65,7 +78,7 @@ def build(df: pd.DataFrame) -> pd.DataFrame:
             s2 = float(np.average(b[ok], weights=w[ok]))
             # Per-task improvement, then weighted — a ratio of the pooled means
             # would let one large-scale task set the sign for the whole row.
-            per_task = (a[ok] - b[ok]) / np.where(a[ok] == 0, np.nan, a[ok]) * 100
+            per_task = improvement_pct(a[ok], b[ok])
             rows.append({
                 "model": model, "benchmark": bench, "alpha": float(alpha),
                 "metric": metric,
@@ -76,6 +89,11 @@ def build(df: pd.DataFrame) -> pd.DataFrame:
                 "win_rate": float(np.average(
                     g["win_rate"].to_numpy(float)[ok], weights=w[ok])),
                 "n_identical": int(g["n_identical"].to_numpy()[ok].sum()),
+                # Both can make two alpha columns describe different things, so
+                # they travel with n_identical rather than living in a docstring.
+                "n_unforecastable": int(g["n_unforecastable"].to_numpy()[ok].sum()),
+                "n_oracle_substituted": int(
+                    g["n_oracle_substituted"].to_numpy()[ok].sum()),
             })
     return pd.DataFrame(rows)
 
@@ -96,8 +114,12 @@ def render(t: pd.DataFrame) -> str:
                 f"{r['alpha']:>6.2f}{r['n_tasks']:>6.0f}{r['n_items']:>7.0f}"
                 f"{r[f'step1_{metric}']:>10.4f}{r[f'step2_{metric}']:>10.4f}"
                 f"{r['improvement_pct']:>+10.2f}{r['win_rate'] * 100:>7.1f}"
-                f"{r['n_identical']:>7.0f}")
+                f"{r['n_identical']:>7.0f}"
+                + ("" if r["alpha"] == 0 else "   (oracle leakage)"))
     out += ["",
+            "EVERY alpha > 0 ROW LEAKS THE COVARIATES' TRUE FUTURE — an upper",
+            "bound on what a perfect covariate forecaster could buy, not a",
+            "score. alpha = 0 is the only honest arm.",
             "improve% is (step1 - step2)/step1 per task, weighted by scored",
             "items, so POSITIVE means the pseudo-known-future pass helped.",
             "Both steps score the FIRST variate only, on the same items.",
@@ -107,12 +129,38 @@ def render(t: pd.DataFrame) -> str:
     return "\n".join(out)
 
 
-def plot(t: pd.DataFrame, out_png: Path) -> None:
-    """Improvement per model, grouped by benchmark, one panel per metric."""
+def _pyplot():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    return plt
 
+
+def _save(fig, out_png: Path) -> None:
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=140, bbox_inches="tight")
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+
+
+def _model_label(m, n: int = 18) -> str:
+    """One truncation, so two figures in one directory name a model the same."""
+    return str(m).split("/")[-1][:n]
+
+
+def plot(t: pd.DataFrame, out_png: Path) -> None:
+    """Improvement per model, grouped by benchmark, one panel per metric.
+
+    ALPHA = 0 ONLY. This is the figure the README documents as exp005's result,
+    and alpha > 0 is label leakage on the covariates; averaging the two into one
+    bar would silently report the mean of a control and an upper bound. The
+    sweep has its own figure, `alpha_curves`.
+    """
+    t = t[t["alpha"] == 0.0]
+    if t.empty:
+        return
+    plt = _pyplot()
     metrics = [m for m in METRICS if not t[t["metric"] == m].empty]
     if not metrics:
         return
@@ -130,7 +178,7 @@ def plot(t: pd.DataFrame, out_png: Path) -> None:
             ax.bar(x + i * w - 0.4 + w / 2, vals, width=w, label=b)
         ax.axhline(0, color="k", lw=0.8)
         ax.set_xticks(x)
-        ax.set_xticklabels([str(m).split("/")[-1][:18] for m in models],
+        ax.set_xticklabels([_model_label(m) for m in models],
                            fontsize=8, rotation=15, ha="right")
         ax.set_ylabel(f"{metric} improvement, step1→step2 (%)", fontsize=10)
         ax.set_title(f"{metric}: does a pseudo known-future covariate help?",
@@ -139,10 +187,7 @@ def plot(t: pd.DataFrame, out_png: Path) -> None:
         ax.legend(fontsize=8)
     fig.suptitle("positive = feeding the model its own covariate forecast "
                  "helped; first variate scored only", fontsize=8, y=0.01)
-    fig.tight_layout()
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=140, bbox_inches="tight")
-    plt.close(fig)
+    _save(fig, out_png)
 
 
 def alpha_curves(t: pd.DataFrame, out_png: Path) -> None:
@@ -152,26 +197,21 @@ def alpha_curves(t: pd.DataFrame, out_png: Path) -> None:
     the curve is monotone, which a colour ramp hides. One panel per quantity,
     one line per (model, benchmark).
     """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    sub = t[t["metric"] == "MASE"].sort_values("alpha")
+    plt = _pyplot()
+    sub = t[t["metric"] == "MASE"]
     if sub.empty or sub["alpha"].nunique() < 2:
         return
-    panels = [("step2_MASE", "step-2 MASE (lower is better)"),
-              ("improvement_pct", "MASE improvement vs step 1 (%)"),
-              ("win_rate", "win rate vs step 1")]
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.2))
-    for ax, (col, title) in zip(axes, panels):
+    panels = [("step2_MASE", "step-2 MASE (lower is better)", None, None),
+              ("improvement_pct", "MASE improvement vs step 1 (%)", 0.0, "-"),
+              ("win_rate", "win rate vs step 1", 0.5, ":")]
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4.2))
+    for ax, (col, title, ref, ls) in zip(axes, panels):
         for (model, bench), g in sub.groupby(["model", "benchmark"]):
             g = g.sort_values("alpha")
             ax.plot(g["alpha"], g[col], marker="o",
-                    label=f"{str(model).split('/')[-1][:16]}/{bench}")
-        if col == "improvement_pct":
-            ax.axhline(0, color="k", lw=0.8)
-        if col == "win_rate":
-            ax.axhline(0.5, color="k", lw=0.8, ls=":")
+                    label=f"{_model_label(model)}/{bench}")
+        if ref is not None:
+            ax.axhline(ref, color="k", lw=0.8, ls=ls)
         ax.set_xlabel("alpha  (0 = pseudo covariate future, 1 = oracle)")
         ax.set_title(title, fontsize=10)
         ax.grid(alpha=0.3)
@@ -180,10 +220,7 @@ def alpha_curves(t: pd.DataFrame, out_png: Path) -> None:
                  "forecast of them; the scored target is never oracle. "
                  "alpha > 0 is label leakage on the covariates — an upper "
                  "bound, not a score.", fontsize=8, y=0.005)
-    fig.tight_layout()
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_png, dpi=140, bbox_inches="tight")
-    plt.close(fig)
+    _save(fig, out_png)
 
 
 def main() -> int:

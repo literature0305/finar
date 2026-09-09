@@ -86,7 +86,7 @@ def forecastable(items) -> "np.ndarray":
     undefined for it.
     """
     return np.array([
-        not np.isnan(np.asarray(it["context"], dtype=np.float64)).all(axis=1).any()
+        not np.isnan(it["context"]).all(axis=1).any()
         for it in items])
 
 
@@ -96,7 +96,30 @@ def step1_inputs(items) -> list[dict]:
             for it in items]
 
 
-def blend_future(items, cov_future, alpha: float, horizon: int):
+def oracle_future(items, cov_future, horizon: int) -> list:
+    """Per item, everything the blend needs that does NOT depend on alpha.
+
+    Computed once per task and reused by every alpha, for the same reason step 1
+    and `prepare()` are: the oracle slice and the two finite masks are properties
+    of the data, and recomputing them per alpha cost ~40% of `blend_future`.
+    ``None`` marks a univariate item, which has no covariate to blend.
+    """
+    prep = []
+    for it, pseudo in zip(items, cov_future):
+        if not pseudo.size:
+            prep.append(None)
+            continue
+        oracle = np.asarray(it["truth"], dtype=np.float32)[1:, :horizon]
+        if oracle.shape != pseudo.shape:
+            raise RuntimeError(
+                f"oracle future is {oracle.shape} but step 1 predicted "
+                f"{pseudo.shape} covariate rows — the two describe different "
+                f"variates and blending them would mix series")
+        prep.append((oracle, np.isfinite(oracle), np.isfinite(pseudo)))
+    return prep
+
+
+def blend_future(prep, cov_future, alpha: float):
     """``(futures, n_substituted)`` — `alpha*oracle + (1-alpha)*pseudo`.
 
     ORACLE is the covariate variates' TRUE future, which the benchmark holds as
@@ -129,25 +152,28 @@ def blend_future(items, cov_future, alpha: float, horizon: int):
     `n_substituted` counts those cells so the substitution is reported rather
     than hidden.
     """
+    if alpha == 0.0:
+        # Identity, and the default. The arithmetic below reproduces `pseudo`
+        # exactly at alpha = 0, so running it buys nothing but an allocation
+        # per item; the shape guard it would have run lives in `oracle_future`.
+        return list(cov_future), 0
     out, n_sub = [], 0
-    for it, pseudo in zip(items, cov_future):
-        if not pseudo.size:
+    for pr, pseudo in zip(prep, cov_future):
+        if pr is None:
             out.append(pseudo)
             continue
-        oracle = np.asarray(it["truth"], dtype=np.float32)[1:, :horizon]
-        if oracle.shape != pseudo.shape:
-            raise RuntimeError(
-                f"oracle future is {oracle.shape} but step 1 predicted "
-                f"{pseudo.shape} covariate rows — the two describe different "
-                f"variates and blending them would mix series")
-        o_ok, p_ok = np.isfinite(oracle), np.isfinite(pseudo)
-        blend = np.where(o_ok & p_ok, alpha * oracle + (1.0 - alpha) * pseudo,
-                         pseudo)
-        only_oracle = o_ok & ~p_ok
-        if alpha > 0.0 and only_oracle.any():
-            blend = np.where(only_oracle, oracle, blend)
-            n_sub += int(only_oracle.sum())
-        out.append(blend.astype(np.float32))
+        oracle, o_ok, p_ok = pr
+        fill = o_ok & ~p_ok
+        n = int(fill.sum())
+        if n:
+            # Substituted INTO pseudo before the blend: alpha*x + (1-alpha)*x
+            # is x, so one `where` then covers both cases and no cell is
+            # written twice.
+            pseudo = np.where(fill, oracle, pseudo)
+            p_ok = p_ok | fill
+            n_sub += n
+        out.append(np.where(o_ok & p_ok,
+                            alpha * oracle + (1.0 - alpha) * pseudo, pseudo))
     return out, n_sub
 
 
@@ -173,8 +199,17 @@ def step2_inputs(items, cov_future) -> list[dict]:
 
 
 def median_of(q_arr, quantile_levels) -> np.ndarray:
-    """The q=0.5 slice of a ``(rows, Q, H)`` quantile array."""
-    return np.asarray(q_arr)[:, quantile_levels.index(0.5), :]
+    """The q=0.5 slice of a ``(rows, Q, H)`` quantile array, as a COPY.
+
+    Integer indexing returns a strided VIEW whose `.base` is the whole
+    `(rows, Q, H)` block, so returning it keeps every quantile of every variate
+    alive for as long as the caller holds the median. That was tolerable when
+    the median was consumed by one step-2 pass; the alpha sweep holds it across
+    all of them. Measured at `(21, 9, 720)`: 532 KiB retained where 56 KiB is
+    needed, and 11.8 us vs 0.9 us to run `isfinite` over the strided slice.
+    """
+    return np.ascontiguousarray(
+        np.asarray(q_arr)[:, quantile_levels.index(0.5), :])
 
 
 def _check_rows(out, expected, label: str) -> None:
@@ -202,6 +237,29 @@ def _check_rows(out, expected, label: str) -> None:
             f"wrong series. See `forecastable`.")
 
 
+def _predict(forecaster, tasks, expected, label: str, horizon: int,
+             quantile_levels, batch_size: int):
+    """One forward, with the model's own NaN policy and the row check.
+
+    ONE definition for both steps. The policy is what every published run in
+    tsm-trainer feeds, and skipping it is not neutral: on `uci_air_quality_1D`
+    an unwanted zero-fill moved Chronos-2's MASE +29% (the note at the top of
+    `benchmarks/fev_bench.py`). Two independently-resolved copies is how the
+    sweep's baseline and its arms would stop being fed the same thing.
+
+    The import stays inside: `benchmarks` is only importable once `run_eval`
+    has extended `sys.path`.
+    """
+    from benchmarks.fev_bench import _apply_missing_policy
+
+    policy = getattr(forecaster, "missing_value_policy", "keep")
+    out = [np.asarray(t) for t in forecaster.predict_quantiles_tasks(
+        _apply_missing_policy(tasks, policy), prediction_length=horizon,
+        quantile_levels=quantile_levels, batch_size=batch_size)]
+    _check_rows(out, expected, label)
+    return out
+
+
 def run_step1(forecaster, items, horizon: int, quantile_levels,
               batch_size: int = 32):
     """``(target1_q, cov_future)`` — the no-covariate-future baseline.
@@ -217,29 +275,20 @@ def run_step1(forecaster, items, horizon: int, quantile_levels,
     neutral: on `uci_air_quality_1D` an unwanted zero-fill moved Chronos-2's
     MASE +29%, which is the note at the top of `benchmarks/fev_bench.py`.
     """
-    from benchmarks.fev_bench import _apply_missing_policy
-
-    policy = getattr(forecaster, "missing_value_policy", "keep")
-    s1 = forecaster.predict_quantiles_tasks(
-        _apply_missing_policy(step1_inputs(items), policy),
-        prediction_length=horizon, quantile_levels=quantile_levels,
-        batch_size=batch_size)
-    # One (n_variates, Q, H) tensor per task. `t[1:]` is empty when a task is
-    # univariate, so median_of already yields the (0, H) future step 2 wants.
-    s1 = [np.asarray(t) for t in s1]
+    tasks = step1_inputs(items)
     # LOUD, not positional. The model returns rows without labels, so a task
     # that comes back with fewer rows than it was given variates has silently
     # renumbered them — `t[0]` would then be a different series than the one
     # scored against. `forecastable()` removes the known cause (an all-NaN
     # variate); this catches any other.
-    _check_rows(s1, [np.asarray(it["context"]).shape[0] for it in items],
-                "step 1")
+    s1 = _predict(forecaster, tasks, [t["target"].shape[0] for t in tasks],
+                  "step 1", horizon, quantile_levels, batch_size)
     target1 = np.stack([t[0] for t in s1])
     cov_future = [median_of(t[1:], quantile_levels) for t in s1]
     return target1, cov_future
 
 
-def run_step2(forecaster, items, cov_future, target1, alpha: float,
+def run_step2(forecaster, items, cov_future, prep, target1, alpha: float,
               horizon: int, quantile_levels, batch_size: int = 32):
     """``(target2_q, n_identical, n_substituted)`` for one alpha.
 
@@ -249,21 +298,18 @@ def run_step2(forecaster, items, cov_future, target1, alpha: float,
     reads as "no gain" but is really "the manipulation never reached the
     model".
     """
-    from benchmarks.fev_bench import _apply_missing_policy
-
-    policy = getattr(forecaster, "missing_value_policy", "keep")
-    fut, n_substituted = blend_future(items, cov_future, alpha, horizon)
-    s2 = forecaster.predict_quantiles_tasks(
-        _apply_missing_policy(step2_inputs(items, fut), policy),
-        prediction_length=horizon, quantile_levels=quantile_levels,
-        batch_size=batch_size)
-    s2 = [np.asarray(t) for t in s2]
+    fut, n_substituted = blend_future(prep, cov_future, alpha)
     # Step 2 hands the model ONE target, so every task must come back with
     # exactly one row.
-    _check_rows(s2, [1] * len(items), "step 2")
+    s2 = _predict(forecaster, step2_inputs(items, fut), [1] * len(items),
+                  "step 2", horizon, quantile_levels, batch_size)
     target2 = np.stack([t[0] for t in s2])
-    identical = int(np.isclose(target1, target2, rtol=1e-6, atol=1e-8)
-                    .all(axis=(1, 2)).sum())
+    # Per item, not one `isclose` over the whole (n, Q, H) stack: that
+    # allocated a 1.6 GB boolean temporary per alpha at full scale, and was
+    # slower (401 ms vs 327 ms at n = 22,500).
+    identical = sum(bool(np.allclose(target1[i], target2[i],
+                                     rtol=1e-6, atol=1e-8))
+                    for i in range(len(target1)))
     return target2, identical, n_substituted
 
 
@@ -329,6 +375,18 @@ def score(target_q, prep: dict, quantile_levels, Metrics) -> dict:
         seasonal_period=1, scales=prep["scales"])
     return {"MASE": m["MASE"], "WQL": m["WQL"],
             "mase_per_item": m["mase_per_item"]}
+
+
+def improvement_pct(step1, step2) -> float:
+    """``(step1 - step2) / step1 * 100`` — positive means step 2 helped.
+
+    One definition, used by run_eval per task and by build_table per row, so a
+    zero-guard cannot drift between the csv and the table built from it.
+    Works elementwise on arrays as well as on scalars.
+    """
+    a = np.asarray(step1, dtype=float)
+    return (np.asarray(step2, dtype=float) - a) / np.where(
+        (a == 0) | ~np.isfinite(a), np.nan, a) * -100.0
 
 
 def win_rate(a: dict, b: dict) -> float:

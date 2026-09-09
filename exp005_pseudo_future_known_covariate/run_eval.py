@@ -133,6 +133,16 @@ def build_forecaster(args):
     return forecaster
 
 
+def _same_as_prev(step2: dict, alphas, alpha) -> int:
+    """Items whose step-2 forecast is unchanged from the previous alpha."""
+    i = list(alphas).index(alpha)
+    if i == 0:
+        return -1          # no predecessor; -1 rather than a misleading 0
+    prev, cur = step2[list(alphas)[i - 1]], step2[alpha]
+    return sum(bool(np.allclose(prev[k], cur[k], rtol=1e-6, atol=1e-8))
+               for k in range(len(cur)))
+
+
 def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
     """One row per alpha for this task, all sharing ONE step 1 and ONE mask."""
     H = int(group[0]["horizon"])
@@ -150,7 +160,7 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
         return []
 
     season = Metrics.get_seasonal_period(group[0]["freq"])
-    t0 = time.time()
+    t0 = time.time()  # step 1 + prepare; each alpha times its own step 2
     # ONE step 1 for every alpha: it does not depend on the blend, so paying it
     # per alpha would cost a forward each and let the sweep's own baseline drift
     # between its columns.
@@ -161,16 +171,21 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
     # survivors would compare different populations.
     prep = two_step.prepare(group, H, season, Metrics)
     a = two_step.score(s1, prep, QUANTILES, Metrics)
+    # The oracle slice and its finite masks are properties of the data, not of
+    # alpha — hoisted for the same reason step 1 and prepare() are.
+    blend_prep = two_step.oracle_future(group, cov_future, H)
+    setup_s = round(time.time() - t0, 1)
 
-    rows = []
+    rows, step2 = [], {}
     for alpha in args.alpha:
+        t1 = time.time()
         with torch.no_grad():
             s2, ident, n_sub = two_step.run_step2(
-                forecaster, group, cov_future, s1, alpha, H, QUANTILES,
-                batch_size=args.batch_size)
+                forecaster, group, cov_future, blend_prep, s1, alpha, H,
+                QUANTILES, batch_size=args.batch_size)
+        step2[alpha] = s2
         b = two_step.score(s2, prep, QUANTILES, Metrics)
-        imp = ((a["MASE"] - b["MASE"]) / a["MASE"] * 100
-               if np.isfinite(a["MASE"]) and a["MASE"] else float("nan"))
+        imp = two_step.improvement_pct(a["MASE"], b["MASE"])
         rows.append({
             "model": str(args.model_path), "task": task, "alpha": alpha,
             "n_items": len(group), "horizon": H, "seasonality": season,
@@ -185,13 +200,22 @@ def score_task(forecaster, task, group, args, Metrics, two_step) -> list[dict]:
             # the oracle had a real value; substituted for alpha > 0, reported
             # rather than hidden. See two_step.blend_future.
             "n_oracle_substituted": n_sub,
-            "elapsed_s": round(time.time() - t0, 1),
+            # How many items this alpha's step 2 matches the PREVIOUS alpha's
+            # on. `n_identical` asks whether the manipulation reached the model
+            # at all; this asks whether the DOSE did — a sweep whose arms are
+            # all equal to each other is flat for a plumbing reason and would
+            # otherwise read as a clean null.
+            "n_same_as_prev_alpha": _same_as_prev(step2, args.alpha, alpha),
+            # Per alpha, and the shared setup separately: one cumulative clock
+            # made row k mean "step 1 plus the first k+1 step-2 passes", so the
+            # column could not be summed or compared between rows.
+            "setup_s": setup_s, "step2_s": round(time.time() - t1, 1),
         })
     return rows
 
 
 def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
-                  load_items, totals) -> list[dict]:
+                  load_items) -> list[dict]:
     root = (resolve_data(args.fev_data, _LOCAL_FEV, "fev") if benchmark == "fev"
             else resolve_data(args.gift_data, _LOCAL_GIFT, "gift"))
     items = list(load_items(
@@ -222,9 +246,6 @@ def run_benchmark(forecaster, benchmark: str, args, Metrics, two_step,
         for row in task_rows:
             row["benchmark"] = benchmark
             rows.append(row)
-            t = totals.setdefault(row["alpha"], {"identical": 0, "items": 0})
-            t["identical"] += row["n_identical"]
-            t["items"] += row["n_items"]
             if row["n_identical"] == row["n_items"]:
                 # The whole-run refusal below cannot see this: a model blind on
                 # SOME tasks still differs on others, so the run passes while
@@ -272,19 +293,28 @@ def main() -> int:
         if args.num_task_subsets > 1 else "")
     forecaster = build_forecaster(args)
 
-    rows, totals = [], {}
+    rows = []
     for benchmark in args.benchmarks:
         rows += run_benchmark(forecaster, benchmark, args, Metrics, two_step,
-                              load_items, totals)
+                              load_items)
 
     if not rows:
         raise SystemExit("no rows scored — check --benchmarks and the data roots")
+    # Derived from the rows rather than threaded through the benchmark loop as
+    # an out-parameter: every row already carries alpha, n_identical, n_items.
+    # After the empty check, so an empty run reports that rather than reading as
+    # "every alpha was blind".
+    totals = {a: {"identical": 0, "items": 0} for a in args.alpha}
+    for r in rows:
+        totals[r["alpha"]]["identical"] += r["n_identical"]
+        totals[r["alpha"]]["items"] += r["n_items"]
     # EVERY alpha, not the pooled total: a run where alpha = 0 is fully
     # identical but alpha = 1 is not has measured something, and pooling would
     # hide which end of the axis reached the model.
     blind = [a for a, t in totals.items() if t["identical"] == t["items"]]
     if len(blind) == len(totals):
-        n = sum(t["items"] for t in totals.values()) // max(1, len(totals))
+        # Every alpha scores the same items, so any one of them is the count.
+        n = next(iter(totals.values()))["items"]
         raise SystemExit(
             f"step 2 returned step 1 on ALL {n} items at EVERY alpha "
             f"{sorted(totals)}. The known-future covariates never changed the "
