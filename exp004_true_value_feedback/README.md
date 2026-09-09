@@ -123,26 +123,29 @@ the patch, one benchmark into an alpha sweep, minutes after loading — and it
 fired for the $\alpha = 0$ arm too, which does no blending and looks like it
 should be immune.
 
-### The fev arm needs `covariate-aware` mode
+### fev's three input modes, and which are captured
 
-fev-bench chooses one of three input-construction modes per run, and only
-**`covariate-aware`** calls `_window_to_task_inputs` — the seam `capture_truth`
-hooks. The other two hand the model plain contexts, so nothing is captured,
-every lookup misses, and the `truth_hits == 0` guard discards the run *after*
-it has done all of its work:
+fev-bench chooses one input-construction mode per run (`fev_bench.py`,
+`mode = ...`), and the mode decides which builder the truth has to be caught in:
 
-| mode | when | capture |
-|---|---|---|
-| `aed-pairwise` | `supports_pairwise` is True — it wins the priority test | ✗ |
-| `independent (group-id ignored)` | `supports_covariates` is False; for EO that is `config.group_attention` reducing to false | ✗ |
-| `covariate-aware` | otherwise | ✓ |
+| mode | when | builder | captured |
+|---|---|---|---|
+| `covariate-aware` | `supports_covariates`, no pairwise | `_window_to_task_inputs` | ✓ |
+| `independent (group-id ignored)` | `supports_covariates` is False — for EO, `config.group_attention` reduced to false | `_window_to_contexts` | ✓ |
+| `aed-pairwise` | `supports_pairwise` wins the priority test | groups of `(past, future)` tuples | ✗ refused |
 
-`run_eval.py` now refuses such a checkpoint **before** the benchmark runs and
-names which mode it would have taken. The second row is worth reading twice: a
-checkpoint without group attention has no cross-variate path for a fed-back
-truth to travel along, so the arm would be undefined for it even if the capture
-did fire. GIFT-Eval is exempt — its capture patches `gift_eval.data.Dataset`
-and does not go through this path, so `--benchmarks gift` still runs.
+**Group attention is not required.** exp004 replaces a variate's own pass-1
+forecast with its own true future — self-feedback along time. It needs no
+cross-variate path, so a channel-independent checkpoint is a perfectly valid
+subject and its `independent` mode is hooked. Verified on ETT_15T: 280 hits /
+0 misses in `independent`, 40 / 0 in `covariate-aware`.
+
+`aed-pairwise` is refused because it differs in kind, not just in seam — the
+model is handed groups of `(past, future)` tuples rather than task dicts, so
+this experiment's per-row truth layout does not describe the rows the write-back
+sees. Blending there would feed the wrong values rather than none.
+
+GIFT-Eval is unaffected either way: its capture patches `gift_eval.data.Dataset`.
 
 ### What comes out
 

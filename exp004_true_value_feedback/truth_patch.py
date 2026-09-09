@@ -267,13 +267,61 @@ def capture_truth(benchmark: str, store: TruthStore):
             pending["truth"] = None
             return inputs
 
+        # THE THIRD PATCH, for the path a checkpoint WITHOUT group attention
+        # takes. fev-bench picks its input-construction mode once per run
+        # (`fev_bench.py`, `mode = ...`), and only `covariate-aware` calls
+        # `_window_to_task_inputs`. A forecaster whose `supports_covariates` is
+        # False — for EO, `config.group_attention` reduced to false — runs in
+        # `independent (group-id ignored)` mode, where the model is handed the
+        # bare context arrays `_window_to_contexts` builds and the hook above
+        # never fires.
+        #
+        # That is a limitation of WHERE the truth was captured, not of the
+        # experiment: exp004 replaces a variate's own pass-1 forecast with its
+        # own true future, which is self-feedback along time. It needs no
+        # cross-variate path and is perfectly well defined for a
+        # channel-independent model.
+        #
+        # BY FINGERPRINT, not id: the pipeline rebuilds input dicts from these
+        # bare arrays (`convert_context_to_inputs`) before `_row_budget_chunks`
+        # sees them, so identity is gone by then — the same reason the
+        # GIFT-Eval branch below is fingerprinted.
+        orig_ctx = fb._window_to_contexts
+
+        def patched_contexts(past_data, target_col, *a, **kw):
+            out = orig_ctx(past_data, target_col, *a, **kw)
+            gt = pending["truth"]
+            if gt is None:
+                return out
+            cols = ([target_col] if isinstance(target_col, str)
+                    else list(target_col))
+            by_col = {c: np.asarray(gt[c], dtype=np.float32) for c in cols}
+            # The builder's own order: series-major, target-column-minor. One
+            # context row per (series, column), so each row's truth is that one
+            # column's horizon — a (1, H) block, since the rebuilt dict's
+            # target is 1-D and `_row_truth` reads n_targets = 1 for it.
+            k = 0
+            for i in range(min(len(past_data), len(gt))):
+                for c in cols:
+                    if k >= len(out):
+                        break
+                    store.add_fp(out[k], by_col[c][i][None, :])
+                    k += 1
+            # `pending` is deliberately NOT cleared here. On the covariate-aware
+            # path BOTH builders run for the same window, contexts first, and
+            # clearing would leave `patched_build` with nothing — turning the
+            # mode that already worked into one that captures nothing.
+            return out
+
         fev.EvaluationWindow.get_input_data = patched_input
         fb._window_to_task_inputs = patched_build
+        fb._window_to_contexts = patched_contexts
         try:
             yield
         finally:
             fev.EvaluationWindow.get_input_data = orig_input
             fb._window_to_task_inputs = orig_build
+            fb._window_to_contexts = orig_ctx
         return
 
     if benchmark.startswith("gift"):

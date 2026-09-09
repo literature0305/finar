@@ -151,47 +151,37 @@ def resolve_data(explicit, default: Path, what: str):
 
 
 def require_capture_route(benchmark: str, forecaster) -> None:
-    """Refuse a forecaster the fev capture seam cannot reach.
+    """Refuse only the fev mode the capture seam genuinely cannot reach.
 
-    fev-bench picks ONE of three input-construction modes per run
-    (`fev_bench.py`, `mode = ...`), and only `covariate-aware` calls
-    `_window_to_task_inputs` — which is the seam `capture_truth` hooks. The
-    other two hand the model plain contexts, so the store is never filled, every
-    lookup misses, and the run is thrown away by the `truth_hits == 0` guard
-    after having done all of its work.
+    fev-bench picks ONE input-construction mode per run (`fev_bench.py`,
+    `mode = ...`) and `capture_truth` covers two of the three:
 
-        aed-pairwise                 forecaster.supports_pairwise wins the
-                                     priority test, so use_covariates is False
-        independent (group-id …)     supports_covariates is False — for EO that
-                                     is `config.group_attention` reduced to
-                                     false, so the checkpoint has no group
-                                     attention and there is no cross-variate
-                                     path for the truth to be fed into anyway
-        covariate-aware              the only mode this experiment works in
+        covariate-aware              `_window_to_task_inputs` -> hooked
+        independent (group-id …)     `_window_to_contexts`    -> hooked
+        aed-pairwise                 groups of (past, future) tuples -> NOT hooked
 
-    Checked per benchmark because only fev routes this way; GIFT-Eval's capture
-    patches `gift_eval.data.Dataset` and is unaffected.
+    `independent` is the mode a checkpoint without group attention takes, and it
+    is supported: exp004 replaces a variate's own pass-1 forecast with its own
+    true future, which is self-feedback along time. That needs no cross-variate
+    path and is well defined for a channel-independent model.
+
+    `aed-pairwise` is different in kind, not just in seam: the model is handed
+    groups of (past, future) tuples rather than task dicts, so `_row_truth`'s
+    per-row layout does not describe what the write-back will see. Refusing is
+    correct until someone works out that layout.
     """
     if not benchmark.startswith("fev"):
         return
-    pairwise = bool(getattr(forecaster, "supports_pairwise", False))
-    covariates = bool(getattr(forecaster, "supports_covariates", False))
-    if covariates and not pairwise:
+    if not getattr(forecaster, "supports_pairwise", False):
         return
-    mode = "aed-pairwise" if pairwise else "independent (group-id ignored)"
-    why = ("supports_pairwise=True takes priority over the covariate-aware "
-           "path" if pairwise else
-           "supports_covariates=False — for an EO checkpoint that is "
-           "config.group_attention reducing to false, which also means the "
-           "checkpoint has no cross-variate path to feed the truth into")
     raise SystemExit(
-        f"{forecaster.name!r} would make fev-bench run in {mode!r} mode, not "
-        f"'covariate-aware': {why}.\n"
-        f"Only 'covariate-aware' calls _window_to_task_inputs, which is where "
-        f"the truth is captured — every lookup would miss and the run would be "
-        f"refused after doing all of its work.\n"
-        f"Check the checkpoint's group_attention, or run with --benchmarks "
-        f"gift, whose capture does not go through this path.")
+        f"{forecaster.name!r} exposes supports_pairwise, so fev-bench would run "
+        f"in 'aed-pairwise' mode. The model is then handed groups of "
+        f"(past, future) tuples instead of task dicts, and this experiment's "
+        f"per-row truth layout does not describe those rows — the run would "
+        f"blend the wrong values rather than none.\n"
+        f"Run with --benchmarks gift, or use a checkpoint without pairwise "
+        f"covariate modelling.")
 
 
 def make_adapter(benchmark: str, args):
