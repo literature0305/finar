@@ -97,6 +97,16 @@ import sys
 import time
 from pathlib import Path
 
+# CPU CAP — AT MODULE SCOPE, ABOVE numpy/torch. OpenMP and BLAS size their pools
+# when the library first loads, so a cap applied after those imports is ignored
+# for them. `main()` calls limit_cpu again once --num-workers is parsed; that
+# second call is runtime-only work (torch, pyarrow, fev) and is order-free.
+sys.path.append(str(next(d for d in Path(__file__).resolve().parents
+                         if (d / "finar_cpu.py").is_file())))
+from finar_cpu import argv_workers, limit_cpu  # noqa: E402
+
+limit_cpu(argv_workers(), quiet=True)
+
 import numpy as np
 import yaml
 
@@ -389,22 +399,6 @@ def main() -> int:
     }, indent=1))
 
     add_repo_to_path(args.repo)
-    # BEFORE any adapter or model is built. Every finar experiment
-    # drives the adapters itself, so run_benchmark.main()'s
-    # torch/pyarrow/fev caps never run for it — only its module-level
-    # env-var pass does. See finar_cpu.
-    import importlib.util as _ilu
-    for _d in Path(__file__).resolve().parents:
-        _f = _d / "finar_cpu.py"
-        if _f.is_file():
-            _s = _ilu.spec_from_file_location("finar_cpu", _f)
-            _m = _ilu.module_from_spec(_s); _s.loader.exec_module(_m)
-            break
-    else:
-        raise SystemExit(
-            "finar_cpu.py not found above this file; without it the run sizes "
-            "its thread pools to the whole machine")
-    limit_cpu = _m.limit_cpu
     limit_cpu(args.num_workers)
     # Belt and braces: the fev adapter gates its depth sweep on this, and a
     # future adapter may too. Harmless where report_depth already forces it.

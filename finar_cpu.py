@@ -1,96 +1,160 @@
 #!/usr/bin/env python3
-"""One CPU-thread cap for every finar experiment.
+"""One CPU cap for every finar experiment — derived from the allocation, not typed.
 
 WHY THIS EXISTS
 ---------------
-`run_benchmark.py` caps threads in two places: a module-level call that sets the
-env-var pools (`OMP/MKL/OPENBLAS/NUMEXPR/TOKIO`) to 8, and a block inside
-`main()` that additionally does `torch.set_num_threads`, `pa.set_cpu_count` and
-`pa.set_io_thread_count` from `--num-workers`.
+`run_benchmark.py` caps threads in two places: `_apply_cpu_thread_limit` (its
+line 87), which sets the env-var pools and is importable, and a block under
+`if __name__ == "__main__":` (its 2606-2620) doing `torch.set_num_threads`,
+`pa.set_cpu_count` and `pa.set_io_thread_count` — which is NOT importable, since
+that file has no `main()`. Every finar experiment imports `load_forecaster` and
+drives the adapters itself, so it got the first and not the second. Measured on
+an 18-core box: torch 18, torch interop 18, fev's bound `num_proc` default 18,
+against an intended 8 — 17.8 effective cores where 8 were asked for.
 
-Every finar experiment imports `load_forecaster` and drives the adapters itself,
-so it gets the first and NOT the second. Measured on an 18-core box with the
-intended cap of 8:
+THE CAP IS READ, NOT TYPED
+--------------------------
+The incident this exists for is a node that reports 255 logical CPUs while
+allocating ~29, because `multiprocessing.cpu_count()` ignores cgroup quotas.
+Asking an operator to know the allocation and retype it as `--num-workers 29` in
+seven places restates the quota as folklore, and gets it wrong on the next node.
+`available_cpus()` reads it: the scheduler affinity mask, the cgroup v2/v1 CPU
+quota, and `cpu_count()`, whichever is smallest.
 
-    OMP/MKL/OPENBLAS/TOKIO_NUM_THREADS   8      capped
-    pyarrow cpu_count / io_thread_count  8      capped
-    torch.get_num_threads()             18      NOT capped
-    torch.get_num_interop_threads()     18      NOT capped
-    fev DEFAULT_NUM_PROC                18      NOT capped
+An explicit request is CLAMPED to that, never trusted above it. Without the
+clamp the helper inverts its own purpose: on a node where something already
+exported `OMP_NUM_THREADS=255`, the env fallback would return 255 and this
+module would then write 255 into every other pool — becoming the amplifier
+rather than the cap.
 
-`multiprocessing.cpu_count()` also ignores cgroup quotas, so on a node that
-reports 255 logical CPUs while allocating ~29 the uncapped pools size themselves
-to 255 — which is how a remote job dies rather than merely running slowly.
-
-ORDER MATTERS, AND HALF OF IT CANNOT BE FIXED FROM PYTHON
----------------------------------------------------------
-OpenMP/BLAS size their pools when their library is first loaded, so
-`OMP_NUM_THREADS` has to be in the environment BEFORE `import torch`. A python
-process that imports torch at module scope has already lost that race. The
-launcher scripts therefore export the env vars before starting python, and this
-module handles what CAN be set at runtime: torch's own pools, pyarrow's, and
-fev's process-pool default.
-
-`limit_cpu` is idempotent and reports what it actually achieved, so a run that
-did not get the cap it asked for says so in its log rather than being discovered
-by a dead node.
+ORDER MATTERS, AND HALF OF IT IS NOT RUNTIME-SETTABLE
+-----------------------------------------------------
+OpenMP and BLAS size their pools when the library is first loaded, so
+`OMP_NUM_THREADS` must be in the environment before `import numpy` or
+`import torch`. That is why every entry point calls `limit_cpu()` at MODULE
+scope, above its own third-party imports, and again from `main()` once
+`--num-workers` is parsed — the second call is runtime-only work (torch,
+pyarrow, fev) and cannot be undone by import order.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
+import sys
 
 logger = logging.getLogger("finar_cpu")
 
-#: What a run uses when nothing says otherwise. Deliberately small: the failure
-#: mode of too few threads is a slow run, of too many is a killed one.
-DEFAULT_THREADS = 8
+#: Ceiling for the unquota'd case, where the affinity mask is the whole machine
+#: and there is nothing else to go on. The failure mode of too few threads is a
+#: slow run; of too many, a killed one.
+DEFAULT_MAX = 8
 
+#: The same six names `run_benchmark._apply_cpu_thread_limit` sets (its line 87)
+#: — copied because that function uses `setdefault`, so it cannot LOWER a value
+#: already in the environment, which is exactly the case here. If a seventh is
+#: added upstream it must be added here too.
 _ENV_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
              "NUMEXPR_MAX_THREADS", "TOKIO_WORKER_THREADS",
              "HF_XET_NUM_CONCURRENT_RANGE_GETS")
 
 
+def _cgroup_quota() -> int | None:
+    """CPUs this cgroup may use, or None when unquota'd or unreadable."""
+    try:                                        # cgroup v2
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    try:                                        # cgroup v1
+        q = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())
+        p = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        if q > 0 and p > 0:
+            return max(1, int(q / p))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def available_cpus() -> int:
+    """How many CPUs this process may actually use.
+
+    The smallest of: the scheduler affinity mask, the cgroup quota, and
+    `cpu_count()`. `cpu_count()` alone is what reports 255 on a node that
+    allocates 29.
+    """
+    candidates = [os.cpu_count() or 1]
+    try:
+        candidates.append(len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        pass
+    q = _cgroup_quota()
+    if q:
+        candidates.append(q)
+    return max(1, min(candidates))
+
+
 def requested_threads(explicit: int | None = None) -> int:
-    """The cap this process should use: the flag, else the environment, else 8."""
+    """The cap to use: the flag, else the environment, else the default —
+    always clamped to what the allocation actually permits."""
+    allowed = available_cpus()
     if explicit:
-        return max(1, int(explicit))
-    return max(1, int(os.environ.get("OMP_NUM_THREADS", DEFAULT_THREADS)))
+        want = int(explicit)
+    else:
+        try:
+            want = int(os.environ.get("OMP_NUM_THREADS", "") or 0)
+        except ValueError:
+            want = 0
+        want = want or min(DEFAULT_MAX, allowed)
+    n = max(1, min(want, allowed))
+    if explicit and n != int(explicit):
+        logger.warning("--num-workers %s exceeds the %d CPU(s) this process is "
+                       "allocated; using %d", explicit, allowed, n)
+    return n
 
 
-def limit_cpu(n: int | None = None, *, quiet: bool = False) -> dict:
-    """Cap every CPU pool this stack can reach. Returns what was achieved.
+def argv_workers(argv=None) -> int | None:
+    """`--num-workers N` read straight off the command line, or None.
 
-    Safe to call more than once and safe to call after torch is imported —
-    `torch.set_num_threads` is a runtime setting. The env vars are set too, for
-    any library loaded later in the process, but a library already loaded keeps
-    the pool it sized at import; that is what the launcher's export is for.
+    The module-scope call happens before argparse exists, and torch's INTER-op
+    pool can only be sized once — so without this the early call would fix it at
+    the derived default and `--num-workers 4` could never lower it. Deliberately
+    forgiving: an unparsable value falls through to the derived default rather
+    than failing here, because argparse will report it properly moments later.
+    """
+    argv = sys.argv if argv is None else argv
+    for i, a in enumerate(argv):
+        if a == "--num-workers" and i + 1 < len(argv):
+            v = argv[i + 1]
+        elif a.startswith("--num-workers="):
+            v = a.split("=", 1)[1]
+        else:
+            continue
+        try:
+            return int(v)
+        except ValueError:
+            return None
+    return None
+
+
+def limit_cpu(n: int | None = None, *, quiet: bool = False) -> int:
+    """Cap every CPU pool this stack can reach. Returns the cap applied.
+
+    Idempotent. Call once at module scope, above numpy/torch, so the env-var
+    pools are sized correctly, and again once the flag is parsed.
     """
     n = requested_threads(n)
-    # Reported, not silently reconciled: OpenMP and BLAS sized their pools when
-    # the library loaded, so a cap that disagrees with what the environment said
-    # at startup is half-applied whatever we write now. The launcher passes the
-    # same number to both, so this only fires on a hand-rolled invocation.
-    env_n = os.environ.get("OMP_NUM_THREADS")
-    if env_n and int(env_n) != n and not quiet:
-        logger.warning(
-            "CPU cap %d was requested but the process started with "
-            "OMP_NUM_THREADS=%s; the OpenMP/BLAS pools are already that size "
-            "and cannot be resized from here. Pass one value to both, or set "
-            "the environment before starting python.", n, env_n)
     for var in _ENV_VARS:
         os.environ[var] = str(n)
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-    got: dict = {"requested": n}
+    got: dict = {}
     try:
         import torch
         torch.set_num_threads(n)
-        # Interop is a SEPARATE pool and can only be set before the first
-        # parallel region; failing is normal and not worth an exception.
         try:
+            # A separate pool, settable only before the first parallel region.
             torch.set_num_interop_threads(n)
         except RuntimeError:
             pass
@@ -106,69 +170,36 @@ def limit_cpu(n: int | None = None, *, quiet: bool = False) -> dict:
         got["pyarrow_io"] = pa.io_thread_count()
     except (ImportError, AttributeError):
         pass
-    # fev binds DEFAULT_NUM_PROC = multiprocessing.cpu_count() as the DEFAULT
-    # ARGUMENT of iter_windows / load_full_dataset / get_window. Rebinding the
-    # constant does NOT change those: a function's defaults are captured in
-    # __defaults__ at definition time. Verified — after setting the constant to
-    # 8, `signature(fev.Task.iter_windows).parameters['num_proc'].default` is
-    # still 18. tsm-trainer's `_cap_fev_num_proc` rebinds the bound defaults,
-    # which is exactly why it exists; reporting the constant instead would be a
-    # false success while fev still forks one worker per machine core.
-    try:
-        from benchmarks.fev_bench import _cap_fev_num_proc
-        _cap_fev_num_proc(n)
-    except ImportError:
-        pass
-    try:
-        import inspect
+    # ONLY if fev is already loaded. `_cap_fev_num_proc` imports fev, which
+    # pulls the whole datasets/HF stack: measured 0.54 s and +88 MB RSS, paid by
+    # the three experiments that never touch fev. The four that do have it
+    # loaded by the time this runs from main(), and cap it to 1 themselves
+    # downstream anyway.
+    if "fev" in sys.modules:
+        try:
+            from benchmarks.fev_bench import _cap_fev_num_proc
+            _cap_fev_num_proc(n)
+            import inspect
 
-        import fev
-        got["fev"] = int(inspect.signature(
-            fev.Task.iter_windows).parameters["num_proc"].default)
-    except Exception:  # noqa: BLE001 — fev absent or its signature changed
-        pass
+            import fev
+            # Read back the BOUND DEFAULT, not the constant: fev binds
+            # DEFAULT_NUM_PROC as a default argument, and a function's defaults
+            # are captured at definition time — setting the constant leaves
+            # `iter_windows(num_proc=...)` at the machine core count while
+            # reporting success.
+            got["fev"] = int(inspect.signature(
+                fev.Task.iter_windows).parameters["num_proc"].default)
+        except Exception:  # noqa: BLE001 — fev absent or its signature moved
+            pass
 
-    # `max(2, n)` is what pyarrow's io pool was asked for, so compare against
-    # that: at n = 1 a correctly applied cap would otherwise always warn.
-    ceilings = {"pyarrow_io": max(2, n)}
     over = {k: v for k, v in got.items()
-            if k != "requested" and v > ceilings.get(k, n)}
+            if v > (max(2, n) if k == "pyarrow_io" else n)}
     if over and not quiet:
         logger.warning(
-            "CPU cap %d requested but %s — a pool was sized before this ran; "
-            "export the env vars before starting python", n, over)
+            "CPU cap %d requested but %s — a pool was sized before this ran. "
+            "Call limit_cpu() at module scope, above numpy/torch.", n, over)
     elif not quiet:
-        logger.info("CPU cap: %d thread(s) — %s", n,
-                    ", ".join(f"{k}={v}" for k, v in got.items()
-                              if k != "requested"))
-    return got
+        logger.info("CPU cap: %d of %d allocated — %s", n, available_cpus(),
+                    ", ".join(f"{k}={v}" for k, v in got.items()) or "no pools yet")
+    return n
 
-
-def load_from(start: Path):
-    """This module, found from a caller's own location, without touching sys.path.
-
-    Each experiment directory is meant to be self-contained enough to copy to a
-    remote host, and inserting the repo root on `sys.path` to import this would
-    also expose every sibling name to shadowing. Callers use::
-
-        from finar_cpu import load_from        # if the root is importable
-        limit_cpu = load_from(Path(__file__)).limit_cpu
-
-    but the supported form is `bootstrap()` below, which needs no import at all.
-    """
-    return _bootstrap(start)
-
-
-def _bootstrap(start: Path):
-    import importlib.util
-    for d in [start.resolve().parent, *start.resolve().parents]:
-        f = d / "finar_cpu.py"
-        if f.is_file():
-            spec = importlib.util.spec_from_file_location("finar_cpu", f)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod
-    raise SystemExit(
-        f"finar_cpu.py not found above {start} — it holds the CPU cap every "
-        f"experiment needs, and without it a run sizes its thread pools to the "
-        f"whole machine. Copy it next to the experiment directory.")
