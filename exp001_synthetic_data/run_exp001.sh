@@ -165,6 +165,8 @@ fi
 # set at runtime (torch, pyarrow, fev). multiprocessing.cpu_count() also ignores
 # cgroup quotas, so on a node reporting 255 cores while allocating ~29 the
 # uncapped pools size to 255 and the job is killed rather than merely slow.
+[[ "${THREADS}" =~ ^[1-9][0-9]*$ ]] || {
+    echo "--threads must be a positive integer (got '${THREADS}')" >&2; exit 2; }
 export OMP_NUM_THREADS="${THREADS}"
 export MKL_NUM_THREADS="${THREADS}"
 export OPENBLAS_NUM_THREADS="${THREADS}"
@@ -209,6 +211,7 @@ fi
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     note "=== scoring ${CKPT} at depths 1..${DEPTH} -> ${OUT}"
     ${DRY} "${PY}" "${HERE}/run_eval.py" \
+        --num-workers "${THREADS}" \
         --model-path "${CKPT}" --data-root "${DATA_ROOT}" \
         --out "${OUT}" --repo "${REPO}" --coe-eval-depth "${DEPTH}" \
         --context "${CONTEXT}" ${SHALLOW} ${HORIZONS:+--horizons ${HORIZONS}}

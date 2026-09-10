@@ -186,8 +186,18 @@ def main() -> int:
     # drives the adapters itself, so run_benchmark.main()'s
     # torch/pyarrow/fev caps never run for it — only its module-level
     # env-var pass does. See finar_cpu.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from finar_cpu import limit_cpu  # noqa: E402
+    import importlib.util as _ilu
+    for _d in Path(__file__).resolve().parents:
+        _f = _d / "finar_cpu.py"
+        if _f.is_file():
+            _s = _ilu.spec_from_file_location("finar_cpu", _f)
+            _m = _ilu.module_from_spec(_s); _s.loader.exec_module(_m)
+            break
+    else:
+        raise SystemExit(
+            "finar_cpu.py not found above this file; without it the run sizes "
+            "its thread pools to the whole machine")
+    limit_cpu = _m.limit_cpu
     limit_cpu(args.num_workers)
     # The fev adapter gates its depth sweep on this; harmless elsewhere.
     os.environ["TSM_FEV_COE_REPEATS"] = "1"

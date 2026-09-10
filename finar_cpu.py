@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 logger = logging.getLogger("finar_cpu")
 
@@ -68,6 +69,17 @@ def limit_cpu(n: int | None = None, *, quiet: bool = False) -> dict:
     the pool it sized at import; that is what the launcher's export is for.
     """
     n = requested_threads(n)
+    # Reported, not silently reconciled: OpenMP and BLAS sized their pools when
+    # the library loaded, so a cap that disagrees with what the environment said
+    # at startup is half-applied whatever we write now. The launcher passes the
+    # same number to both, so this only fires on a hand-rolled invocation.
+    env_n = os.environ.get("OMP_NUM_THREADS")
+    if env_n and int(env_n) != n and not quiet:
+        logger.warning(
+            "CPU cap %d was requested but the process started with "
+            "OMP_NUM_THREADS=%s; the OpenMP/BLAS pools are already that size "
+            "and cannot be resized from here. Pass one value to both, or set "
+            "the environment before starting python.", n, env_n)
     for var in _ENV_VARS:
         os.environ[var] = str(n)
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -94,17 +106,33 @@ def limit_cpu(n: int | None = None, *, quiet: bool = False) -> dict:
         got["pyarrow_io"] = pa.io_thread_count()
     except (ImportError, AttributeError):
         pass
+    # fev binds DEFAULT_NUM_PROC = multiprocessing.cpu_count() as the DEFAULT
+    # ARGUMENT of iter_windows / load_full_dataset / get_window. Rebinding the
+    # constant does NOT change those: a function's defaults are captured in
+    # __defaults__ at definition time. Verified — after setting the constant to
+    # 8, `signature(fev.Task.iter_windows).parameters['num_proc'].default` is
+    # still 18. tsm-trainer's `_cap_fev_num_proc` rebinds the bound defaults,
+    # which is exactly why it exists; reporting the constant instead would be a
+    # false success while fev still forks one worker per machine core.
     try:
-        # fev binds DEFAULT_NUM_PROC = multiprocessing.cpu_count() as the
-        # default of iter_windows / load_full_dataset / get_window; rebinding
-        # the constant caps every fev path uniformly.
-        import fev.constants
-        fev.constants.DEFAULT_NUM_PROC = n
-        got["fev"] = fev.constants.DEFAULT_NUM_PROC
+        from benchmarks.fev_bench import _cap_fev_num_proc
+        _cap_fev_num_proc(n)
     except ImportError:
         pass
+    try:
+        import inspect
 
-    over = {k: v for k, v in got.items() if k != "requested" and v > n}
+        import fev
+        got["fev"] = int(inspect.signature(
+            fev.Task.iter_windows).parameters["num_proc"].default)
+    except Exception:  # noqa: BLE001 — fev absent or its signature changed
+        pass
+
+    # `max(2, n)` is what pyarrow's io pool was asked for, so compare against
+    # that: at n = 1 a correctly applied cap would otherwise always warn.
+    ceilings = {"pyarrow_io": max(2, n)}
+    over = {k: v for k, v in got.items()
+            if k != "requested" and v > ceilings.get(k, n)}
     if over and not quiet:
         logger.warning(
             "CPU cap %d requested but %s — a pool was sized before this ran; "
@@ -114,3 +142,33 @@ def limit_cpu(n: int | None = None, *, quiet: bool = False) -> dict:
                     ", ".join(f"{k}={v}" for k, v in got.items()
                               if k != "requested"))
     return got
+
+
+def load_from(start: Path):
+    """This module, found from a caller's own location, without touching sys.path.
+
+    Each experiment directory is meant to be self-contained enough to copy to a
+    remote host, and inserting the repo root on `sys.path` to import this would
+    also expose every sibling name to shadowing. Callers use::
+
+        from finar_cpu import load_from        # if the root is importable
+        limit_cpu = load_from(Path(__file__)).limit_cpu
+
+    but the supported form is `bootstrap()` below, which needs no import at all.
+    """
+    return _bootstrap(start)
+
+
+def _bootstrap(start: Path):
+    import importlib.util
+    for d in [start.resolve().parent, *start.resolve().parents]:
+        f = d / "finar_cpu.py"
+        if f.is_file():
+            spec = importlib.util.spec_from_file_location("finar_cpu", f)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise SystemExit(
+        f"finar_cpu.py not found above {start} — it holds the CPU cap every "
+        f"experiment needs, and without it a run sizes its thread pools to the "
+        f"whole machine. Copy it next to the experiment directory.")

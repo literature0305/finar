@@ -206,13 +206,11 @@ def main() -> int:
                    help="recursion depth to score at; every depth 1..N is "
                         "reported. Default 2 — the comparison is iter1 vs iter2")
     p.add_argument("--batch-size", type=int, default=32)
+    # ALSO the CPU cap for this process, not only the adapter's worker count —
+    # see finar_cpu. One number, so the two cannot disagree.
     p.add_argument("--num-workers", type=int, default=None,
-                   help="CPU threads this run may use (default: "
-                        "$OMP_NUM_THREADS, else 8). Caps torch, "
-                        "pyarrow and fev; the launcher exports the "
-                        "OpenMP/BLAS vars, which must be set before "
-                        "python starts to take effect.")
-    p.add_argument("--num-workers", type=int, default=4)
+                   help="CPU threads this run may use AND the adapter's worker "
+                        "count (default: $OMP_NUM_THREADS, else 8)")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
@@ -227,9 +225,18 @@ def main() -> int:
     # drives the adapters itself, so run_benchmark.main()'s
     # torch/pyarrow/fev caps never run for it — only its module-level
     # env-var pass does. See finar_cpu.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from finar_cpu import limit_cpu  # noqa: E402
-    limit_cpu(args.num_workers)
+    import importlib.util as _ilu
+    for _d in Path(__file__).resolve().parents:
+        _f = _d / "finar_cpu.py"
+        if _f.is_file():
+            _s = _ilu.spec_from_file_location("finar_cpu", _f)
+            _m = _ilu.module_from_spec(_s); _s.loader.exec_module(_m)
+            break
+    else:
+        raise SystemExit(
+            "finar_cpu.py not found above this file; without it the run sizes "
+            "its thread pools to the whole machine")
+    limit = _m.limit_cpu(args.num_workers)
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from feedback_patch import SCENARIOS, feedback_scenario  # noqa: E402
@@ -293,7 +300,7 @@ def main() -> int:
         ))
         adapter = FevBenchAdapter(
             data_dir=fev_data, batch_size=args.batch_size,
-            num_workers=args.num_workers,
+            num_workers=limit.get('requested', 8),
             # The covariate subset IS the experiment: self_only and cov_only
             # are only defined where there are covariates to withhold.
             subset="covariate",
