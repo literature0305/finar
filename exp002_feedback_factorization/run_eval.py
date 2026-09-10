@@ -206,6 +206,12 @@ def main() -> int:
                    help="recursion depth to score at; every depth 1..N is "
                         "reported. Default 2 — the comparison is iter1 vs iter2")
     p.add_argument("--batch-size", type=int, default=32)
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="CPU threads this run may use (default: "
+                        "$OMP_NUM_THREADS, else 8). Caps torch, "
+                        "pyarrow and fev; the launcher exports the "
+                        "OpenMP/BLAS vars, which must be set before "
+                        "python starts to take effect.")
     p.add_argument("--num-workers", type=int, default=4)
     args = p.parse_args()
 
@@ -217,6 +223,13 @@ def main() -> int:
 
     eo = require_coe(args.model_path, args.coe_eval_depth)
     add_repo_to_path(args.repo)
+    # BEFORE any adapter or model is built. Every finar experiment
+    # drives the adapters itself, so run_benchmark.main()'s
+    # torch/pyarrow/fev caps never run for it — only its module-level
+    # env-var pass does. See finar_cpu.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from finar_cpu import limit_cpu  # noqa: E402
+    limit_cpu(args.num_workers)
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from feedback_patch import SCENARIOS, feedback_scenario  # noqa: E402

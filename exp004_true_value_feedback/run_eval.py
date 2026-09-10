@@ -221,6 +221,12 @@ def main() -> int:
                         "(default: 0.0 0.5 1.0)")
     p.add_argument("--coe-eval-depth", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=64)
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="CPU threads this run may use (default: "
+                        "$OMP_NUM_THREADS, else 8). Caps torch, "
+                        "pyarrow and fev; the launcher exports the "
+                        "OpenMP/BLAS vars, which must be set before "
+                        "python starts to take effect.")
     p.add_argument("--benchmarks", nargs="+", default=list(BENCHMARKS))
     p.add_argument("--fev-subset", default="multivariate",
                    choices=("all", "univariate", "multivariate", "covariate"),
@@ -253,6 +259,13 @@ def main() -> int:
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     add_repo_to_path(args.repo)
+    # BEFORE any adapter or model is built. Every finar experiment
+    # drives the adapters itself, so run_benchmark.main()'s
+    # torch/pyarrow/fev caps never run for it — only its module-level
+    # env-var pass does. See finar_cpu.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from finar_cpu import limit_cpu  # noqa: E402
+    limit_cpu(args.num_workers)
     from truth_patch import (TruthStore, capture_truth,  # noqa
                              require_repo_support, truth_feedback)
 

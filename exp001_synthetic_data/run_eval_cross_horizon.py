@@ -138,6 +138,12 @@ def main() -> int:
                    help="recursion depths to score, 1..N. May exceed the "
                         "checkpoint's trained depth; that is the experiment.")
     p.add_argument("--batch-size", type=int, default=32)
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="CPU threads this run may use (default: "
+                        "$OMP_NUM_THREADS, else 8). Caps torch, "
+                        "pyarrow and fev; the launcher exports the "
+                        "OpenMP/BLAS vars, which must be set before "
+                        "python starts to take effect.")
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
@@ -146,6 +152,13 @@ def main() -> int:
         raise SystemExit("--coe-eval-depth must be >= 1")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     add_repo_to_path(args.repo)
+    # BEFORE any adapter or model is built. Every finar experiment
+    # drives the adapters itself, so run_benchmark.main()'s
+    # torch/pyarrow/fev caps never run for it — only its module-level
+    # env-var pass does. See finar_cpu.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from finar_cpu import limit_cpu  # noqa: E402
+    limit_cpu(args.num_workers)
 
     from benchmarks.chronos_bench import ChronosLiteBenchmarkAdapter  # noqa
     from run_benchmark import load_forecaster                          # noqa

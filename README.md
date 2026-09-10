@@ -24,3 +24,4 @@ bash run_exp001.sh --stage all --ckpt /path/to/eo-v4-K2/best_checkpoints
 ```
 
 `--stage` picks the phase and exp002–exp005 take `--repo <tsm-trainer>`.
+`--threads N` caps CPU use (default 8; use 8/16/32) — see `finar_cpu.py`.

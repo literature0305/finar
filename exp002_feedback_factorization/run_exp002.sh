@@ -40,6 +40,10 @@
 # ---------------------------------------------------------------------------
 #   --ckpt PATH        EO v4 checkpoint. REQUIRED.
 #   --repo PATH        tsm-trainer checkout to IMPORT from. Read-only: this
+#   --threads N         CPU threads this run may use. Default 8.
+#                       Use 8, 16 or 32; the pools are capped BEFORE
+#                       python starts, which is the only time it works
+#                       for OpenMP/BLAS.
 #                      experiment never writes to it.
 #   --stage all|eval|table            default: all
 #   --scenarios "full self_only"      default: all three
@@ -82,6 +86,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer}"
+THREADS="${THREADS:-8}"
 CKPT=""; STAGE="all"; SCENARIOS=""; DEPTH=2; FEV_DATA=""; OUT=""
 BATCH=32; DRY=""
 
@@ -89,6 +94,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ckpt)       CKPT="$2";      shift 2 ;;
         --repo)       REPO="$2";      shift 2 ;;
+        --threads)     THREADS="$2";   shift 2 ;;
         --stage)      STAGE="$2";     shift 2 ;;
         --scenarios)  SCENARIOS="$2"; shift 2 ;;
         --depth)      DEPTH="$2";     shift 2 ;;
@@ -109,6 +115,20 @@ PY="${PYTHON:-${REPO}/.venv/bin/python}"
 [[ -x "${PY}" ]] || { echo "no python found (tried ${REPO}/.venv/bin/python)" >&2; exit 1; }
 
 [[ -n "${OUT}" ]] || OUT="${HERE}/results/$(basename "${CKPT}")"
+# CPU CAP — EXPORTED BEFORE PYTHON STARTS, which is the only time it works for
+# OpenMP/BLAS: those size their pools when the library is first loaded, so a
+# value set after `import torch` is ignored. finar_cpu.py handles what CAN be
+# set at runtime (torch, pyarrow, fev). multiprocessing.cpu_count() also ignores
+# cgroup quotas, so on a node reporting 255 cores while allocating ~29 the
+# uncapped pools size to 255 and the job is killed rather than merely slow.
+export OMP_NUM_THREADS="${THREADS}"
+export MKL_NUM_THREADS="${THREADS}"
+export OPENBLAS_NUM_THREADS="${THREADS}"
+export NUMEXPR_MAX_THREADS="${THREADS}"
+export TOKIO_WORKER_THREADS="${THREADS}"
+export HF_XET_NUM_CONCURRENT_RANGE_GETS="${THREADS}"
+export TOKENIZERS_PARALLELISM=false
+
 note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then

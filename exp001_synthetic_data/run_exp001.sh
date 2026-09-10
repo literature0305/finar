@@ -77,6 +77,10 @@
 #                                 Without it --stage all SKIPS generation when
 #                                 <data-root>/metadata.json is present.
 #   --repo PATH                   tsm-trainer checkout to IMPORT from
+#   --threads N         CPU threads this run may use. Default 8.
+#                       Use 8, 16 or 32; the pools are capped BEFORE
+#                       python starts, which is the only time it works
+#                       for OpenMP/BLAS.
 #   --dry-run                     print the commands without running them
 #
 # ---------------------------------------------------------------------------
@@ -106,6 +110,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer}"
+THREADS="${THREADS:-8}"
 DATA_ROOT="/group-volume/ts-dataset/finar_exp001"
 STAGE="all"
 CKPT=""
@@ -133,6 +138,7 @@ while [[ $# -gt 0 ]]; do
         --shards)     SHARDS="$2";     shift 2 ;;
         --force-data) FORCE_DATA=1;    shift ;;
         --repo)       REPO="$2";       shift 2 ;;
+        --threads)     THREADS="$2";   shift 2 ;;
         --dry-run)    DRY="echo [dry]"; shift ;;
         # To the end of the header block, not to a hard-coded line number:
         # the header IS the documentation, and a fixed range silently starts
@@ -152,6 +158,20 @@ fi
 # Results land under a directory named for the model, so the EO run and the
 # Chronos-2 baseline can sit side by side and `build_table.py` can take both.
 [[ -n "${OUT}" ]] || OUT="${HERE}/results/$(basename "${CKPT:-none}")"
+
+# CPU CAP — EXPORTED BEFORE PYTHON STARTS, which is the only time it works for
+# OpenMP/BLAS: those size their pools when the library is first loaded, so a
+# value set after `import torch` is ignored. finar_cpu.py handles what CAN be
+# set at runtime (torch, pyarrow, fev). multiprocessing.cpu_count() also ignores
+# cgroup quotas, so on a node reporting 255 cores while allocating ~29 the
+# uncapped pools size to 255 and the job is killed rather than merely slow.
+export OMP_NUM_THREADS="${THREADS}"
+export MKL_NUM_THREADS="${THREADS}"
+export OPENBLAS_NUM_THREADS="${THREADS}"
+export NUMEXPR_MAX_THREADS="${THREADS}"
+export TOKIO_WORKER_THREADS="${THREADS}"
+export HF_XET_NUM_CONCURRENT_RANGE_GETS="${THREADS}"
+export TOKENIZERS_PARALLELISM=false
 
 note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 

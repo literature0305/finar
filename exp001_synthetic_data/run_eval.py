@@ -308,6 +308,12 @@ def main() -> int:
     p.add_argument("--force-views", action="store_true",
                    help="rewrite the slices even if they already exist")
     p.add_argument("--batch-size", type=int, default=64)
+    p.add_argument("--num-workers", type=int, default=None,
+                   help="CPU threads this run may use (default: "
+                        "$OMP_NUM_THREADS, else 8). Caps torch, "
+                        "pyarrow and fev; the launcher exports the "
+                        "OpenMP/BLAS vars, which must be set before "
+                        "python starts to take effect.")
     p.add_argument("--allow-shallow", action="store_true",
                    help="run a non-COE or depth-1 model anyway, for the "
                         "Chronos-2 baseline that has no iteration axis")
@@ -383,6 +389,13 @@ def main() -> int:
     }, indent=1))
 
     add_repo_to_path(args.repo)
+    # BEFORE any adapter or model is built. Every finar experiment
+    # drives the adapters itself, so run_benchmark.main()'s
+    # torch/pyarrow/fev caps never run for it — only its module-level
+    # env-var pass does. See finar_cpu.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from finar_cpu import limit_cpu  # noqa: E402
+    limit_cpu(args.num_workers)
     # Belt and braces: the fev adapter gates its depth sweep on this, and a
     # future adapter may too. Harmless where report_depth already forces it.
     os.environ.setdefault("TSM_FEV_COE_REPEATS", "1")

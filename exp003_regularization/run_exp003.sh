@@ -48,6 +48,10 @@
 # ---------------------------------------------------------------------------
 #   --ckpt PATH           model to score. Required for eval.
 #   --repo PATH           tsm-trainer checkout to IMPORT from. Read-only.
+#   --threads N         CPU threads this run may use. Default 8.
+#                       Use 8, 16 or 32; the pools are capped BEFORE
+#                       python starts, which is the only time it works
+#                       for OpenMP/BLAS.
 #   --train-config PATH   training yaml whose training_data defines the mixture.
 #                         Required for --stage data.
 #   --stage data|eval|all default: all
@@ -76,6 +80,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer}"
+THREADS="${THREADS:-8}"
 CKPT=""; TRAIN_CFG=""; STAGE="all"; DEPTH=2; SHALLOW=""
 N=5000; MIN_LEN=500; OUT_ROOT="/group-volume/ts-dataset"; OUT=""
 FORCE_DATA=""; DRY=""
@@ -84,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ckpt)         CKPT="$2";      shift 2 ;;
         --repo)         REPO="$2";      shift 2 ;;
+        --threads)     THREADS="$2";   shift 2 ;;
         --train-config) TRAIN_CFG="$2"; shift 2 ;;
         --stage)        STAGE="$2";     shift 2 ;;
         --depth)        DEPTH="$2";     shift 2 ;;
@@ -108,6 +114,20 @@ if [[ "${STAGE}" != "data" && -z "${CKPT}" ]]; then
     echo "--ckpt is required for --stage ${STAGE}" >&2; exit 2
 fi
 [[ -n "${OUT}" ]] || OUT="${HERE}/results/$(basename "${CKPT:-none}")"
+# CPU CAP — EXPORTED BEFORE PYTHON STARTS, which is the only time it works for
+# OpenMP/BLAS: those size their pools when the library is first loaded, so a
+# value set after `import torch` is ignored. finar_cpu.py handles what CAN be
+# set at runtime (torch, pyarrow, fev). multiprocessing.cpu_count() also ignores
+# cgroup quotas, so on a node reporting 255 cores while allocating ~29 the
+# uncapped pools size to 255 and the job is killed rather than merely slow.
+export OMP_NUM_THREADS="${THREADS}"
+export MKL_NUM_THREADS="${THREADS}"
+export OPENBLAS_NUM_THREADS="${THREADS}"
+export NUMEXPR_MAX_THREADS="${THREADS}"
+export TOKIO_WORKER_THREADS="${THREADS}"
+export HF_XET_NUM_CONCURRENT_RANGE_GETS="${THREADS}"
+export TOKENIZERS_PARALLELISM=false
+
 note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 
 if [[ "${STAGE}" == "data" || "${STAGE}" == "all" ]]; then
