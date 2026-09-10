@@ -29,6 +29,18 @@ import logging
 import sys
 from pathlib import Path
 
+# CPU CAP — AT MODULE SCOPE, ABOVE numpy/pandas/pyarrow. OpenMP and BLAS size
+# their pools when the library first loads, so a cap applied later is ignored by
+# them. Measured uncapped on an 18-core box: 17.9 effective cores. The launcher
+# also exports these, but this file is runnable on its own. No
+# --num-workers here: these parsers do not take one, and peeking for a
+# flag argparse would then reject is a promise the script cannot keep.
+sys.path.append(str(next(d for d in Path(__file__).resolve().parents
+                         if (d / "finar_cpu.py").is_file())))
+from finar_cpu import limit_cpu  # noqa: E402
+
+limit_cpu(quiet=True)   # from $OMP_NUM_THREADS or the allocation
+
 import numpy as np
 import pandas as pd
 
