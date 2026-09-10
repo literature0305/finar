@@ -177,7 +177,7 @@ fi
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     note "=== scoring ${CKPT} at depths 1..${DEPTH} -> ${OUT}"
     ${DRY} "${PY}" "${HERE}/run_eval_cross_horizon.py" \
-        --num-workers "${THREADS}" \
+        ${THREADS:+--num-workers "${THREADS}"} \
         --model-path "${CKPT}" --repo "${REPO}" --out "${OUT}" \
         --data "${DATA}" --coe-eval-depth "${DEPTH}" --batch-size "${BATCH}"
 fi

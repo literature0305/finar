@@ -163,7 +163,7 @@ note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     note "=== scoring ${CKPT} at depths 1..${DEPTH} -> ${OUT}"
     ${DRY} "${PY}" "${HERE}/run_eval.py" \
-        --num-workers "${THREADS}" \
+        ${THREADS:+--num-workers "${THREADS}"} \
         --model-path "${CKPT}" --repo "${REPO}" --out "${OUT}" \
         --coe-eval-depth "${DEPTH}" --batch-size "${BATCH}" \
         ${BENCHMARKS:+--benchmarks ${BENCHMARKS}} \

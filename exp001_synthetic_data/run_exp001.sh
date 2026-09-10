@@ -198,7 +198,7 @@ fi
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     note "=== scoring ${CKPT} at depths 1..${DEPTH} -> ${OUT}"
     ${DRY} "${PY}" "${HERE}/run_eval.py" \
-        --num-workers "${THREADS}" \
+        ${THREADS:+--num-workers "${THREADS}"} \
         --model-path "${CKPT}" --data-root "${DATA_ROOT}" \
         --out "${OUT}" --repo "${REPO}" --coe-eval-depth "${DEPTH}" \
         --context "${CONTEXT}" ${SHALLOW} ${HORIZONS:+--horizons ${HORIZONS}}

@@ -229,7 +229,7 @@ sys.exit(0 if set(want) <= set(m.get('alpha', [0.0])) else 1)" \
         # One model per process: a failure on one must not cost the others, and
         # each holds a whole checkpoint in VRAM.
         ${DRY} "${PY}" "${HERE}/run_eval.py" \
-        --num-workers "${THREADS}" \
+        ${THREADS:+--num-workers "${THREADS}"} \
             --model-path "${CKPT}" --repo "${REPO}" --out "${OUT}" \
             --coe-eval-depth "${DEPTH}" --batch-size "${BATCH}" \
             ${ALPHA:+--alpha ${ALPHA}} \
