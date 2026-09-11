@@ -25,4 +25,5 @@ bash run_exp001.sh --stage all --ckpt /path/to/eo-v4-K2/best_checkpoints
 
 `--stage` picks the phase and exp002–exp005 take `--repo <tsm-trainer>`.
 `--num-workers N` caps CPU use; the default is read from the cgroup quota
-and affinity mask — see `finar_cpu.py`.
+and affinity mask — see `finar_cpu.py`. `python check_launchers.py` verifies
+every launcher emits arguments its script accepts.
