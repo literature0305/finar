@@ -21,6 +21,7 @@ import json
 import logging
 import hashlib
 import random
+import resource
 import sys
 import time
 from pathlib import Path
@@ -141,6 +142,25 @@ def _run_id(args, cfg: ModelConfig, parser_defaults: dict) -> str:
         return name
     blob = json.dumps(overrides, sort_keys=True, default=str).encode()
     return f"{name}_{hashlib.sha256(blob).hexdigest()[:8]}"
+
+
+def peak_resources(device: str) -> dict:
+    """What this run actually needed, for sizing the machine that runs it.
+
+    `ru_maxrss` is the high-water mark of the whole process, so it covers the
+    corpus parse as well as training — which is what a host-memory limit has to
+    accommodate. The CUDA figures are torch's allocator: `allocated` is the
+    live tensors, `reserved` is what it took from the driver and is the number
+    that has to fit in VRAM.
+    """
+    out = {"host_peak_gb": round(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2 ** 20, 2)}
+    if device.startswith("cuda") and torch.cuda.is_available():
+        out["gpu_peak_gb"] = round(
+            torch.cuda.max_memory_allocated() / 2 ** 30, 2)
+        out["gpu_reserved_gb"] = round(
+            torch.cuda.max_memory_reserved() / 2 ** 30, 2)
+    return out
 
 
 def _claim_run_dir(run_dir: Path, config: dict) -> None:
@@ -326,6 +346,9 @@ def train(args, parser_defaults: dict | None = None) -> dict:
     stopper = EarlyStopping(optim_cfg["patience"], run_dir / "checkpoint.pt")
     scaler = (torch.amp.GradScaler(device.split(":")[0])
               if args.amp else None)
+    if device.startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+    started_run = time.time()
     history = []
 
     model.train()
@@ -365,8 +388,14 @@ def train(args, parser_defaults: dict | None = None) -> dict:
         adjust_learning_rate(optimizer, epoch, optim_cfg["learning_rate"],
                              optim_cfg["lradj"])
 
+    resources = peak_resources(device)
+    resources["train_seconds"] = round(time.time() - started_run, 1)
+    resources["epochs_run"] = len(history)
+    resources["parameters"] = run_config["parameters"]
+    logger.info("  peak %s", ", ".join(f"{k}={v}" for k, v in resources.items()))
     (run_dir / "train_log.json").write_text(json.dumps(
-        {"best_epoch": stopper.best_epoch, "history": history}, indent=2))
+        {"best_epoch": stopper.best_epoch, "resources": resources,
+         "history": history}, indent=2))
     if not (run_dir / "checkpoint.pt").is_file():
         # Every branch above saves on the first epoch, so reaching this means
         # the loop never ran a single epoch — refuse rather than evaluate a

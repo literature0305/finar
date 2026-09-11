@@ -110,6 +110,7 @@ these runs; the file records both so the choice can be audited.
 | `prepare_data.sh` / `verify_data.py` | fetch the nine datasets and check their shape |
 | `train.sh` / `eval.sh` / `submit_job.py` | the launchers, local or via `ssub` |
 | `_common.sh` | the interpreter search and `note()`, sourced by all three |
+| `HARDWARE.md` | measured VRAM / RAM / time per cell, and what a machine needs |
 
 Nothing imports tsm-trainer. The launchers borrow that checkout's interpreter
 when `PYTHON` is unset; `requirements.txt` is there to drop even that.

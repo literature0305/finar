@@ -39,3 +39,7 @@ cd exp007_itransformer_residual_refinement
 bash prepare_data.sh --with-reference
 bash train.sh --dataset ETTh1 --pred-len 96 --refinement on --train-depth 3
 ```
+
+Measured resource requirements per dataset and horizon — and what the whole
+published table costs — are in
+`exp007_itransformer_residual_refinement/HARDWARE.md`.
