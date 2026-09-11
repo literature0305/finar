@@ -11,6 +11,7 @@ bias for dependency *inside* the forecast target.
 | `exp003_regularization` | Dependency modelling, or regularisation? |
 | `exp004_true_value_feedback` | What does pass 2 do when handed the truth? |
 | `exp005_..._known_covariate` | Do a model's own covariate forecasts help as known-future? |
+| `exp007_itransformer_residual_refinement` | Does EO v4's refinement improve iTransformer? |
 | `latex` | ICLR 2027 manuscript |
 
 ## Usage
@@ -27,3 +28,14 @@ bash run_exp001.sh --stage all --ckpt /path/to/eo-v4-K2/best_checkpoints
 `--num-workers N` caps CPU use; the default is read from the cgroup quota
 and affinity mask — see `finar_cpu.py`. `python check_launchers.py` verifies
 every launcher emits arguments its script accepts.
+
+exp007 is the exception: it TRAINS rather than evaluating a checkpoint, and is
+standalone — it imports nothing from tsm-trainer. Its launchers are
+`train.sh` (which chains straight into evaluation) and `eval.sh`, and
+`prepare_data.sh` fetches the datasets it needs.
+
+```bash
+cd exp007_itransformer_residual_refinement
+bash prepare_data.sh --with-reference
+bash train.sh --dataset ETTh1 --pred-len 96 --refinement on --train-depth 3
+```

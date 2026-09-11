@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that every run_exp*.sh emits arguments its run_eval*.py accepts.
+"""Check that every launcher emits arguments the script it calls accepts.
 
 WHY THIS EXISTS
 ---------------
@@ -51,7 +51,33 @@ STAGES = ("eval", "table", "build", "all")
 #: reported as a launcher bug.
 SAMPLE = {"--alpha": "0 1", "--scenarios": "full", "--benchmarks": "fev",
           "--horizons": "16", "--task-subset": "0 1",
-          "--fev-subset": "multivariate"}
+          "--fev-subset": "multivariate",
+          # exp007
+          "--dataset": "ETTh1", "--datasets": "ETTh1", "--pred-len": "96",
+          "--refinement": "on", "--coe-backprop": "last",
+          "--coe-residual": "true", "--coe-bottleneck": "true",
+          "--coe-stochastic-repeat": "true", "--coe-internal-loss": "false",
+          "--coe-future-marks": "true", "--eval-depths": "1 2",
+          "--depths": "1 2", "--device": "cpu", "--gpu-type": "A100",
+          # job mode is the only way submit_job.py is reached, so the sweep
+          # covers it here rather than leaving that arm unchecked.
+          "--mode": "job"}
+
+#: What a launcher needs before it reaches a python call, and which `--stage`
+#: values it understands (`(None,)` for one that has no `--stage`). Keyed by
+#: filename, with None as the fallback for every `run_exp*.sh`.
+#:
+#: `--out` is pinned away from the repo because these invocations really do run
+#: the launcher: the stub replaces the INTERPRETER, not the shell around it, so
+#: a `mkdir -p "${OUT}"` happens for real.
+CHECK_DIR = "/tmp/finar-check-launchers"
+INVOCATION = {
+    "train.sh": (f"--dataset ETTh1 --out {CHECK_DIR}", (None,)),
+    "eval.sh": (f"--out {CHECK_DIR}", ("eval", "table", "all")),
+    # --verify-only, or the check would download 420 MB of datasets.
+    "prepare_data.sh": (f"--verify-only --data-root {CHECK_DIR}", (None,)),
+    None: ("--ckpt /tmp/fake", STAGES),
+}
 _NUMERIC = re.compile(r"depth|size|iters|^--n$|length|series|shards|context|"
                       r"max-|workers")
 
@@ -97,11 +123,13 @@ def check_emitted(sh: pathlib.Path, stub: pathlib.Path) -> list[str]:
     skip = {"--ckpt", "--repo", "--out", "--stage", "--dry-run"}
     combos = [""] + [f"{f} {_sample(f)}" for f in valued if f not in skip] \
                   + [f for f in boolean if f != "--dry-run"]
+    required, stages = INVOCATION.get(sh.name, INVOCATION[None])
     out = []
-    for stage in STAGES:
+    for stage in stages:
         for extra in combos:
+            stage_arg = "" if stage is None else f"--stage {stage}"
             r = subprocess.run(
-                f'bash "{sh}" --ckpt /tmp/fake --stage {stage} {extra}',
+                f'bash "{sh}" {required} {stage_arg} {extra}',
                 shell=True, capture_output=True, text=True,
                 env={**os.environ, "PYTHON": str(stub)})
             # One invocation's argv per run of the stub; a launcher may call it
@@ -133,9 +161,11 @@ def check_emitted(sh: pathlib.Path, stub: pathlib.Path) -> list[str]:
 
 def main() -> int:
     findings = []
-    launchers = sorted(ROOT.glob("exp*/run_exp*.sh"))
+    launchers = sorted(p for pattern in ("exp*/run_exp*.sh", "exp*/train.sh",
+                                        "exp*/eval.sh", "exp*/prepare_data.sh")
+                       for p in ROOT.glob(pattern))
     if not launchers:
-        print(f"no run_exp*.sh under {ROOT}")
+        print(f"no launcher scripts under {ROOT}")
         return 1
     with tempfile.TemporaryDirectory() as td:
         stub = pathlib.Path(td) / "python-stub"
@@ -146,8 +176,7 @@ def main() -> int:
             findings += check_emitted(sh, stub)
     for f in sorted(set(findings)):
         print(f"  {f}")
-    print(f"  {len(launchers)} launcher(s) x {len(STAGES)} stage(s): "
-          f"{len(set(findings))} finding(s)")
+    print(f"  {len(launchers)} launcher(s): {len(set(findings))} finding(s)")
     return 1 if findings else 0
 
 

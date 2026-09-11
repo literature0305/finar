@@ -30,3 +30,9 @@ latex/*.fls
 
 # OS
 .DS_Store
+
+# exp007: the official iTransformer checkout the precheck compares against,
+# and the run directories train.sh writes. Both are reproducible artifacts.
+exp007_itransformer_residual_refinement/reference/
+exp007_itransformer_residual_refinement/runs/
+exp007_itransformer_residual_refinement/results/

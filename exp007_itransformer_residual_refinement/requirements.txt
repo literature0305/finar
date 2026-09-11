@@ -1,0 +1,18 @@
+# exp007 runs standalone: nothing here is imported from tsm-trainer, and the
+# launchers only BORROW that checkout's interpreter when PYTHON is unset.
+# To drop even that:
+#     python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#     PYTHON=$PWD/.venv/bin/python bash train.sh --dataset ETTh1 --pred-len 96
+torch>=2.0
+numpy>=1.23
+pandas>=1.5
+
+# build_table.py's figure. The table is written without it.
+matplotlib>=3.6
+
+# precheck.py --reference ONLY: the official data_provider/data_loader.py
+# imports sklearn's StandardScaler. Nothing in this experiment's own code
+# does — data.py reimplements that scaler (fit on the train slice, ddof=0,
+# constant columns left alone) and precheck asserts the two agree window for
+# window.
+scikit-learn>=1.2
