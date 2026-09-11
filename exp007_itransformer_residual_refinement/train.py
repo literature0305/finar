@@ -114,6 +114,7 @@ RUN_ARTIFACTS = ("checkpoint.pt", "metrics.json", "train_log.json")
 #: its own directory (see `_run_id`).
 TUNABLES = (
     "freq", "d_model", "d_ff", "e_layers", "n_heads", "dropout", "use_norm",
+    "variate_attn",
     # coe_train_depth_max / residual / bottleneck are already in the variant
     # name; coe_eval_depth is not, and it changes what the run REPORTS.
     "coe_eval_depth",
@@ -226,6 +227,7 @@ def build_config(args) -> tuple[ModelConfig, dict]:
         activation=official["activation"],
         use_norm=official["use_norm"] if args.use_norm is None else args.use_norm,
         n_marks=n_time_features(args.freq) if marks else 0,
+        variate_attn=args.variate_attn,
         coe_enabled=args.refinement,
         coe_train_depth_max=args.coe_train_depth_max,
         coe_eval_depth=args.coe_eval_depth,
@@ -441,6 +443,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--n-heads", type=int, default=None)
     p.add_argument("--dropout", type=float, default=None)
     p.add_argument("--use-norm", type=_bool, default=None)
+    p.add_argument("--variate-attn", choices=["all", "last"], default="all",
+                   help="which encoder layers mix variates. 'all' is the "
+                        "paper; 'last' keeps attention only in the final "
+                        "layer (Toto's arrangement), leaving the earlier ones "
+                        "as per-variate FFNs")
     # -- EO v4 chain-of-encoder --
     p.add_argument("--refinement", type=_bool, default=False,
                    help="on: apply the EO v4 chain of encoders (the "

@@ -81,6 +81,13 @@ class ModelConfig:
     #: Extra tokens the embedding carries (timestamp features). 0 for the
     #: datasets the paper runs mark-free (Solar, PEMS).
     n_marks: int = 0
+    #: Which encoder layers mix variates. "all" is the paper: attention in
+    #: every layer, and since a token IS a variate, that is variate attention
+    #: L times over. "last" keeps it only in the final layer — the earlier
+    #: layers become per-variate FFNs (channel-independent), which is the
+    #: arrangement Toto uses. iTransformer has no other attention, so dropping
+    #: it from a layer removes that layer's cross-variate path entirely.
+    variate_attn: str = "all"
 
     # --- EO v4 chain-of-encoder ---------------------------------------
     coe_enabled: bool = False
@@ -111,6 +118,8 @@ class ModelConfig:
             raise ValueError("COE depths are >= 1")
         if self.coe_backprop not in ("last", "all"):
             raise ValueError("coe_backprop is 'last' or 'all'")
+        if self.variate_attn not in ("all", "last"):
+            raise ValueError("variate_attn is 'all' or 'last'")
         if self.coe_internal_loss and self.coe_backprop != "all":
             # EO v4's rule: under "last" the intermediate passes are grad-free,
             # so a loss on them would contribute nothing while reporting a
@@ -214,6 +223,9 @@ class EncoderLayer(nn.Module):
                  activation="relu"):
         super().__init__()
         d_ff = d_ff or 4 * d_model
+        # None = no attention sub-block at all. The projections are not built,
+        # so the parameter count reports what the layer actually is rather
+        # than carrying four dead Linears.
         self.attention = attention
         self.conv1 = nn.Conv1d(d_model, d_ff, kernel_size=1)
         self.conv2 = nn.Conv1d(d_ff, d_model, kernel_size=1)
@@ -223,7 +235,8 @@ class EncoderLayer(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x):
-        x = x + self.dropout(self.attention(x, x, x))
+        if self.attention is not None:
+            x = x + self.dropout(self.attention(x, x, x))
         y = x = self.norm1(x)
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
@@ -260,14 +273,18 @@ class ITransformer(nn.Module):
         self.use_norm = cfg.use_norm
         self.enc_embedding = DataEmbedding_inverted(
             cfg.context_width, cfg.d_model, cfg.dropout)
+        # Which layers get an attention sub-block. "last" leaves the earlier
+        # layers as per-variate FFNs, so the variates meet exactly once.
+        mixes = [cfg.variate_attn == "all" or i == cfg.e_layers - 1
+                 for i in range(cfg.e_layers)]
         self.encoder = Encoder(
             [EncoderLayer(
                 AttentionLayer(
                     FullAttention(attention_dropout=cfg.dropout),
-                    cfg.d_model, cfg.n_heads),
+                    cfg.d_model, cfg.n_heads) if mix else None,
                 cfg.d_model, cfg.d_ff,
                 dropout=cfg.dropout, activation=cfg.activation)
-             for _ in range(cfg.e_layers)],
+             for mix in mixes],
             norm_layer=nn.LayerNorm(cfg.d_model))
         self.projector = nn.Linear(cfg.d_model, cfg.pred_len, bias=True)
 

@@ -35,6 +35,8 @@ Without a reference (only under an explicit `--no-reference`):
             R4 the same reachability test for the hidden-state chain.
             R5 depth d read out of one deeper forward equals running the chain
             to exactly d — what the whole depth sweep rests on.
+            R6 variate_attn="last" leaves every other variate bit-identical in
+            the layers it strips, and still mixes them in the final one.
   table     the paper's targets are present for every dataset x horizon.
 
 `--reproduce DATASET/PRED_LEN` additionally TRAINS that cell with the official
@@ -463,6 +465,42 @@ def check_refinement(device: str) -> Result:
                           f"depth-4 forward differs by {off:.3e} from running "
                           f"the chain to exactly d — the sweep is not the curve")
     notes.append("R5 one forward == per-depth forwards")
+
+    # R6 — variate_attn="last" must actually CUT the cross-variate path in the
+    # earlier layers, not merely rename something. iTransformer's only
+    # attention is over variates, so a layer without it must leave every other
+    # token bit-identical. Probed with a NON-CONSTANT perturbation: a constant
+    # one is erased by the layer's own LayerNorm and every layer then reads as
+    # "does not mix", which is the false pass this check exists to avoid.
+    for attn, want_mix in (("all", True), ("last", False)):
+        cfg = _refine_cfg(coe_enabled=False, coe_train_depth_max=1,
+                          coe_eval_depth=1, e_layers=3, variate_attn=attn)
+        torch.manual_seed(31)
+        m = ITransformer(cfg).to(device).eval()
+        torch.manual_seed(37)
+        with torch.no_grad():
+            h = m.enc_embedding(torch.randn(1, cfg.seq_len, n_var, device=device),
+                                torch.randn(1, cfg.seq_len, 4, device=device))
+            h2 = h.clone()
+            h2[:, 0, :] += torch.randn(cfg.d_model, device=device)
+            early = []
+            for layer in m.encoder.attn_layers:
+                h, h2 = layer(h), layer(h2)
+                early.append(float((h2 - h).abs()[:, 1:].max()))
+        if want_mix and min(early) <= 0.0:
+            return Result("refine", FAIL,
+                          f"R6: variate_attn='all' has a layer that does not "
+                          f"mix variates {early}")
+        if not want_mix:
+            if max(early[:-1]) != 0.0:
+                return Result("refine", FAIL,
+                              f"R6: variate_attn='last' still mixes variates "
+                              f"in an earlier layer {early[:-1]}")
+            if early[-1] <= 0.0:
+                return Result("refine", FAIL,
+                              "R6: variate_attn='last' does not mix variates "
+                              "in the final layer either — no path at all")
+    notes.append("R6 variate_attn cuts exactly the layers it claims")
     return Result("refine", PASS, "; ".join(notes))
 
 
