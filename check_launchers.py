@@ -45,7 +45,6 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent
-STAGES = ("eval", "table", "build", "all")
 
 #: Values that satisfy a flag's `choices=`, so a legitimate rejection is not
 #: reported as a launcher bug.
@@ -63,9 +62,9 @@ SAMPLE = {"--alpha": "0 1", "--scenarios": "full", "--benchmarks": "fev",
           # covers it here rather than leaving that arm unchecked.
           "--mode": "job"}
 
-#: What a launcher needs before it reaches a python call, and which `--stage`
-#: values it understands (`(None,)` for one that has no `--stage`). Keyed by
-#: filename, with None as the fallback for every `run_exp*.sh`.
+#: What a launcher needs before it reaches a python call. Keyed by filename,
+#: with None as the fallback for every `run_exp*.sh`. Which `--stage` values it
+#: accepts is NOT here — that is read off the launcher itself (`_stages`).
 #:
 #: `--out` is pinned away from the repo because these invocations really do run
 #: the launcher: the stub replaces the INTERPRETER, not the shell around it, so
@@ -75,11 +74,12 @@ INVOCATION = {
     # --no-reference because train.sh REFUSES to run without the official
     # iTransformer checkout, which is gitignored and absent from a fresh
     # clone; this check is about argument plumbing, not about that gate.
-    "train.sh": (f"--dataset ETTh1 --out {CHECK_DIR} --no-reference", (None,)),
-    "eval.sh": (f"--out {CHECK_DIR}", ("eval", "table", "all")),
+    "train.sh": ["--dataset", "ETTh1", "--out", CHECK_DIR, "--no-reference"],
+    "eval.sh": ["--out", CHECK_DIR],
     # --verify-only, or the check would download 420 MB of datasets.
-    "prepare_data.sh": (f"--verify-only --data-root {CHECK_DIR}", (None,)),
-    None: ("--ckpt /tmp/fake", STAGES),
+    "prepare_data.sh": ["--verify-only", "--data-root", CHECK_DIR],
+    "run_exp003.sh": ["--ckpt", "/tmp/fake", "--train-config", "/tmp/x"],
+    None: ["--ckpt", "/tmp/fake"],
 }
 _NUMERIC = re.compile(r"depth|size|iters|^--n$|length|series|shards|context|"
                       r"max-|workers")
@@ -99,8 +99,16 @@ def check_flag_docs(sh: pathlib.Path) -> list[str]:
     head = s.split("\nset -", 1)[0]
     # a flag anywhere in a help line, so `--a PATH / --b PATH` counts both
     documented = set(re.findall(r'(--[a-z][a-z0-9-]*)', head))
-    parsed = set(re.findall(r'^\s+(--[a-z][a-z0-9-]*)\)', s, re.M))
-    parsed |= set(re.findall(r'^\s+-h\|(--[a-z]+)\)', s, re.M))
+    # A case arm may list alternatives: `--a|--b|--c)` declares all three, and
+    # a pattern may be spread over continuation lines. Reading only the last
+    # one reported the other five as "documented but has no case arm".
+    # Continuations joined AND the whitespace around `|` squeezed, so an arm
+    # split over lines reads as one alternation.
+    flat = re.sub(r"\s*\|\s*", "|", s.replace("\\\n", " "))
+    parsed = set()
+    for arm in re.findall(r'^\s*((?:-[a-z-]+\|)*--[a-z][a-z0-9-]*)\)',
+                          flat, re.M):
+        parsed |= {f for f in arm.split("|") if f.startswith("--")}
     out = []
     for f in sorted(parsed - documented - {"--help"}):
         out.append(f"{sh.name}: {f} is parsed but not in the header")
@@ -109,6 +117,17 @@ def check_flag_docs(sh: pathlib.Path) -> list[str]:
         if re.search(rf'^#\s{{2,}}{re.escape(f)}(?=[\s|])', head, re.M):
             out.append(f"{sh.name}: {f} is documented but has no `case` arm")
     return out
+
+
+#: A launcher's `case "${STAGE}" in eval|table|all)` line says which stages it
+#: understands. Sweeping a fixed list instead ran 18 invocations the launcher
+#: rejected outright — and scored every one of them clean.
+_STAGE_CASE = re.compile(r'case\s+"\$\{STAGE\}"\s+in\s+([a-z|]+)\)')
+
+
+def _stages(text: str) -> tuple:
+    m = _STAGE_CASE.search(text)
+    return tuple(m.group(1).split("|")) if m else (None,)
 
 
 STUB = r"""#!/usr/bin/env python3
@@ -124,16 +143,22 @@ def check_emitted(sh: pathlib.Path, stub: pathlib.Path) -> list[str]:
     boolean = re.findall(r'^\s+(--[a-z-]+)\)\s+[A-Z_]+="[^$][^"]*";\s*shift\s*;;',
                          s, re.M)
     skip = {"--ckpt", "--repo", "--out", "--stage", "--dry-run"}
-    combos = [""] + [f"{f} {_sample(f)}" for f in valued if f not in skip] \
-                  + [f for f in boolean if f != "--dry-run"]
-    required, stages = INVOCATION.get(sh.name, INVOCATION[None])
+    combos = [[]] + [[f, _sample(f)] for f in valued if f not in skip] \
+                  + [[f] for f in boolean if f != "--dry-run"]
+    required = INVOCATION.get(sh.name, INVOCATION[None])
     out = []
-    for stage in stages:
+    for stage in _stages(s):
         for extra in combos:
-            stage_arg = "" if stage is None else f"--stage {stage}"
+            # A LIST, not a shell string: a sample containing a space
+            # (`--task-subset "0 1"`) word-split into two arguments, the
+            # launcher rejected the stray one, and the invocation was then
+            # scored clean because it never reached python.
+            argv = ["bash", str(sh), *required]
+            if stage is not None:
+                argv += ["--stage", stage]
+            argv += extra
             r = subprocess.run(
-                f'bash "{sh}" {required} {stage_arg} {extra}',
-                shell=True, capture_output=True, text=True,
+                argv, capture_output=True, text=True,
                 env={**os.environ, "PYTHON": str(stub)})
             # One invocation's argv per run of the stub; a launcher may call it
             # more than once (eval then table), so split on the script token.
@@ -146,13 +171,29 @@ def check_emitted(sh: pathlib.Path, stub: pathlib.Path) -> list[str]:
                     cur.append(t)
             if cur:
                 runs.append(cur)
+            if not runs:
+                # "No bad arguments" and "no arguments at all" used to produce
+                # the same green result: the loop below simply never ran. 88 of
+                # the invocations this tool makes were scored clean without the
+                # launcher ever starting python.
+                last = (r.stderr or "").strip().splitlines()
+                out.append(
+                    f"{sh.name} stage={stage} "
+                    f"[{' '.join(extra) or 'no flags'}]: never reached python "
+                    f"(rc={r.returncode}{'; ' + last[-1] if last else ''})")
+                continue
             for toks in runs:
                 py = next((pathlib.Path(t) for t in toks if t.endswith(".py")), None)
                 if py is None or not py.is_file():
                     continue
                 known = _declared(py)
-                where = f"{sh.name} stage={stage} [{extra or 'no flags'}]"
+                where = (f"{sh.name} stage={stage} "
+                     f"[{' '.join(extra) or 'no flags'}]")
                 for i, t in enumerate(toks):
+                    if t == "--":
+                        # POSIX end-of-options: everything after it is a
+                        # payload the target forwards, not flags it declares.
+                        break
                     if not t.startswith("--"):
                         continue
                     if t not in known:
@@ -170,6 +211,13 @@ def main() -> int:
     if not launchers:
         print(f"no launcher scripts under {ROOT}")
         return 1
+    # A launcher that iterates over existing results reaches python only when
+    # there are some; without this, every `eval.sh --stage eval` invocation
+    # exited 0 having done nothing and was scored clean.
+    seeded = pathlib.Path(CHECK_DIR) / "seed-run"
+    seeded.mkdir(parents=True, exist_ok=True)
+    (seeded / "checkpoint.pt").touch()
+    (seeded / "config.json").write_text("{}")
     with tempfile.TemporaryDirectory() as td:
         stub = pathlib.Path(td) / "python-stub"
         stub.write_text(STUB)

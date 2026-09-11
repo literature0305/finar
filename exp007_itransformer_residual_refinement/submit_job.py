@@ -17,12 +17,12 @@ Usage:
     bash train.sh --mode job --dataset ETTh1 --pred-len "96 192 336 720" \
         --refinement on --train-depth 3 --depth 3
 
-    # or directly
-    python submit_job.py --dataset ETTh1 --pred-len "96 192 336 720" \
-        --refinement true --train-depth 3 --depth 3 --ngpu 1
+    # or directly: everything after `--` is train.sh's own argument list
+    python submit_job.py --ngpu 1 -- \
+        --dataset ETTh1 --pred-len "96 192 336 720" --refinement on
 
     # print the ssub command without submitting
-    python submit_job.py --dataset ETTh1 --pred-len 96 --dry-run
+    python submit_job.py --dry-run -- --dataset ETTh1 --pred-len 96
 """
 
 from __future__ import annotations
@@ -49,51 +49,39 @@ BUCKET = "sdp-time-series sdp-time-series2"
 
 HERE = Path(__file__).resolve().parent
 
-#: train.sh flags this forwards verbatim, as (our attribute, train.sh flag).
-#: Everything here is a value flag; the two switches are handled separately.
-FORWARD = [
-    ("seq_len", "--seq-len"), ("data_root", "--data-root"), ("out", "--out"),
-    ("refinement", "--refinement"), ("train_depth", "--train-depth"),
-    ("depth", "--depth"), ("eval_depths", "--eval-depths"),
-    ("coe_residual", "--coe-residual"),
-    ("coe_bottleneck", "--coe-bottleneck"),
-    ("coe_stochastic_repeat", "--coe-stochastic-repeat"),
-    ("coe_backprop", "--coe-backprop"),
-    ("coe_internal_loss", "--coe-internal-loss"),
-    ("coe_future_marks", "--coe-future-marks"),
-    ("epochs", "--epochs"), ("batch_size", "--batch-size"), ("lr", "--lr"),
-    ("seed", "--seed"), ("num_workers", "--num-workers"),
-    ("loader_workers", "--loader-workers"), ("reference", "--reference"),
-]
-
-
 def build_combined_cmd(args) -> str:
     """The semicolon-separated command string ssub runs in the container.
 
-    Every word goes through `shlex.quote`, including the paths. Python's
-    `repr` is NOT shell quoting — it renders an apostrophe with a backslash,
-    which does not escape inside shell single quotes, so a path such as
+    `args.train_args` is train.sh's OWN argv, minus the submission flags —
+    train.sh strips those and hands the rest through untouched. Re-declaring
+    each of them here meant a new flag had to be spelled in five places, and a
+    missed one failed only inside a submitted container, hours later.
+
+    Every word goes through `shlex.quote`, including the paths. Python's `repr`
+    is NOT shell quoting — it renders an apostrophe with a backslash, which
+    does not escape inside shell single quotes, so a path such as
     `/scratch/O'Brien/runs` would be reparsed into something else entirely.
     """
-    train_sh = HERE / "train.sh"
     q = shlex.quote
-    parts = ["--mode local",
-             f"--dataset {q(args.dataset)}",
-             f"--pred-len {q(str(args.pred_len))}"]
-    for attr, flag in FORWARD:
-        value = getattr(args, attr, None)
-        if value is not None and value != "":
-            parts.append(f"{flag} {q(str(value))}")
-    if args.skip_precheck:
-        parts.append("--skip-precheck")
-    if args.no_reference:
-        parts.append("--no-reference")
-    if args.overwrite:
-        parts.append("--overwrite")
+    train_sh = HERE / "train.sh"
+    words = ["--mode", "local"] + list(args.train_args)
     return "; ".join([
         f"cd {q(str(HERE))}",
-        f"bash {q(str(train_sh))} " + " ".join(parts),
+        f"bash {q(str(train_sh))} " + " ".join(q(w) for w in words),
     ])
+
+
+#: Arguments whose value is a path. The container cd's to this directory, so a
+#: path relative to the SUBMITTER's cwd would not resolve there.
+_PATH_ARGS = ("--data-root", "--out", "--reference")
+
+
+def absolutise_paths(words: list[str]) -> list[str]:
+    out = list(words)
+    for i, word in enumerate(out[:-1]):
+        if word in _PATH_ARGS and not os.path.isabs(out[i + 1]):
+            out[i + 1] = str((Path.cwd() / out[i + 1]).resolve())
+    return out
 
 
 def _sanitize_job_name(name: str) -> str:
@@ -151,39 +139,6 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Submit an exp007 training job to Space.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("--dataset", required=True,
-                   help="one or more dataset names, space separated")
-    p.add_argument("--pred-len", default="96",
-                   help="one or more horizons, space separated")
-    p.add_argument("--seq-len", default=None)
-    p.add_argument("--data-root", default=None)
-    p.add_argument("--out", default=None)
-    p.add_argument("--refinement", default=None, help="true or false")
-    p.add_argument("--train-depth", default=None)
-    p.add_argument("--depth", default=None)
-    p.add_argument("--eval-depths", default=None)
-    p.add_argument("--coe-residual", default=None)
-    p.add_argument("--coe-bottleneck", default=None)
-    p.add_argument("--coe-stochastic-repeat", default=None)
-    p.add_argument("--coe-backprop", default=None)
-    p.add_argument("--coe-internal-loss", default=None)
-    p.add_argument("--coe-future-marks", default=None)
-    p.add_argument("--epochs", default=None)
-    p.add_argument("--batch-size", default=None)
-    p.add_argument("--lr", default=None)
-    p.add_argument("--seed", default=None)
-    p.add_argument("--num-workers", default=None,
-                   help="CPU cap inside the container")
-    p.add_argument("--loader-workers", default=None)
-    p.add_argument("--reference", default=None,
-                   help="official checkout for the in-container precheck")
-    p.add_argument("--skip-precheck", action="store_true")
-    p.add_argument("--overwrite", action="store_true",
-                   help="replace run directories holding a different config")
-    p.add_argument("--no-reference", action="store_true",
-                   help="let the in-container precheck run without the "
-                        "official checkout (it refuses by default)")
-    # ── compute ──
     p.add_argument("--gpu-type", default="A100",
                    choices=["A100", "H100", "2080ti"])
     p.add_argument("--ngpu", default="1",
@@ -194,21 +149,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--image", default=IMAGE)
     p.add_argument("--job-name", default=None)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("train_args", nargs="*",
+                   help="after `--`: the train.sh arguments to run in the "
+                        "container, forwarded verbatim")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    # Absolute, because the container cd's to this directory and a path
-    # relative to the SUBMITTER's cwd would not resolve there.
-    for attr in ("data_root", "out", "reference"):
-        value = getattr(args, attr)
-        if value and not os.path.isabs(value):
-            setattr(args, attr, str((Path.cwd() / value).resolve()))
+    args.train_args = absolutise_paths(args.train_args)
 
+    dataset = _flag_value(args.train_args, "--dataset") or "exp007"
+    refined = (_flag_value(args.train_args, "--refinement") or "off").lower()
     name = args.job_name or (
-        f"exp007-{args.dataset.split()[0]}-"
-        f"{'refine' if str(args.refinement).lower() in ('true', 'on') else 'base'}")
+        f"exp007-{dataset.split()[0]}-"
+        f"{'refine' if refined in ('true', 'on') else 'base'}")
     sanitized = _sanitize_job_name(name)
     if sanitized != name:
         print(f"[submit_job] job name {name!r} is not a valid pod name — "
@@ -217,14 +172,19 @@ def main() -> None:
     print(" FiNAR exp007 — Job Submission")
     print("=" * 70)
     print(f"  workdir   : {HERE}")
-    print(f"  datasets  : {args.dataset}")
-    print(f"  horizons  : {args.pred_len}")
-    print(f"  refinement: {args.refinement}")
+    print(f"  train.sh  : {' '.join(args.train_args)}")
     print(f"  gpu-type  : {args.gpu_type}   ngpu: {args.ngpu}")
     print("=" * 70)
     submit(sanitized, build_combined_cmd(args), args)
     print("Done." + (" [DRY RUN] No jobs submitted." if args.dry_run
                      else " 1 job submitted."))
+
+
+def _flag_value(words, flag: str) -> str | None:
+    for i, word in enumerate(words[:-1]):
+        if word == flag:
+            return words[i + 1]
+    return None
 
 
 if __name__ == "__main__":

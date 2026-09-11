@@ -61,7 +61,8 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 import paper  # noqa: E402
-from data import DATASETS, build_dataset, dataset_path, n_time_features  # noqa: E402
+from data import (DATASETS, build_splits, dataset_path,  # noqa: E402
+                  n_time_features)
 from itransformer import ITransformer, ModelConfig, count_parameters  # noqa: E402
 
 logger = logging.getLogger("finar_exp007")
@@ -120,13 +121,11 @@ def _ref_configs(cfg: ModelConfig):
 # checks that need the reference
 # ---------------------------------------------------------------------------
 #: `--data_path` is what identifies a dataset unambiguously across the official
-#: scripts; `--model_id` varies in case and separator.
-_BY_DATA_PATH = {
-    "ETTh1.csv": "ETTh1", "ETTh2.csv": "ETTh2", "ETTm1.csv": "ETTm1",
-    "ETTm2.csv": "ETTm2", "electricity.csv": "ECL", "traffic.csv": "Traffic",
-    "weather.csv": "Weather", "solar_AL.txt": "Solar",
-    "exchange_rate.csv": "Exchange",
-}
+#: scripts; `--model_id` varies in case and separator. DERIVED from the loader's
+#: own registry: a hand-written second copy that drifts would make
+#: `_parse_official_scripts` skip the renamed dataset, and the coverage gate
+#: below would then blame a missing script instead of a stale dict.
+_BY_DATA_PATH = {spec["file"]: name for name, spec in DATASETS.items()}
 
 
 def _parse_official_scripts(reference: Path) -> dict:
@@ -280,8 +279,14 @@ def check_data(reference: Path, data_root: str, seq_len: int,
     for name in present:
         spec = DATASETS[name]
         root = str(Path(data_root) / spec["root"])
+        # ONE read for all three splits. The official loader re-reads and
+        # re-scales the whole file per split, so the comparison already costs
+        # three parses of (on Traffic) a 136 MB csv; matching that on this side
+        # would be six, for three windows and a length each.
+        ours = build_splits(name, data_root, ("train", "val", "test"),
+                            seq_len, pred_len)
         for flag in ("train", "val", "test"):
-            mine = build_dataset(name, data_root, flag, seq_len, pred_len)
+            mine = ours[flag]
             theirs = ref_cls[name](
                 root_path=root, flag=flag, size=[seq_len, 48, pred_len],
                 features="M", data_path=spec["file"], target="OT",
@@ -497,15 +502,16 @@ def check_reproduce(spec: str, data_root: str, device: str, out: str,
         "--dataset", name, "--pred-len", str(pred_len),
         "--data-root", data_root, "--out", str(Path(out) / "precheck"),
         "--device", device, "--run-name", f"{name}_{pred_len}",
-        "--loader-workers", str(workers), "--overwrite",
+        "--loader-workers", str(workers),
     ])
+    # `train()` returns what `run_eval.evaluate` wrote, which already carries
+    # the comparison against Table 10. Recomputing it here produced a second,
+    # differently worded rendering of the same numbers — two formats of one
+    # fact, free to drift.
     result = train_mod.train(args)
-    want = paper.target(name, pred_len)
-    detail = (f"{name}/{pred_len}: MSE {result['mse']:.4f} vs {want[0]:.3f}, "
-              f"MAE {result['mae']:.4f} vs {want[1]:.3f}")
-    ok = (paper.within_tolerance(result["mse"], want[0])
-          and paper.within_tolerance(result["mae"], want[1]))
-    return Result("reproduce", PASS if ok else FAIL, detail)
+    return Result("reproduce",
+                  PASS if result["paper_verdict"] == "match" else FAIL,
+                  f"{name}/{pred_len}: {result['paper_detail']}")
 
 
 def main() -> None:
@@ -538,12 +544,22 @@ def main() -> None:
 
     results = [check_table(), check_refinement(args.device)]
     reference = Path(args.reference).resolve() if args.reference else None
-    if reference and not (reference / "model" / "iTransformer.py").is_file():
-        results.append(Result(
-            "reference", FAIL,
-            f"{reference} is not a thuml/iTransformer checkout "
-            f"(no model/iTransformer.py)"))
+    # SKIP, not FAIL, when the checkout is absent OR unusable: "it is not
+    # there" and "it says something different" are different answers, and
+    # --no-reference is the ONE switch that accepts the first. Failing on an
+    # unusable path meant a caller passing both flags died with the wrong
+    # diagnosis, and it is why the launcher grew a second copy of this gate.
+    if args.no_reference:
+        why, reference = ("--no-reference: the official checkout was not "
+                          "consulted"), None
+    elif reference is None:
+        why = "no --reference given"
+    elif not (reference / "model" / "iTransformer.py").is_file():
+        why = (f"{reference} is not a thuml/iTransformer checkout "
+               f"(no model/iTransformer.py)")
         reference = None
+    else:
+        why = None
     if reference:
         results.append(check_hparams(reference))
         results.append(check_model(reference, args.device))
@@ -553,10 +569,6 @@ def main() -> None:
         else:
             results.append(Result("data", SKIP, "no --data-root given"))
     else:
-        why = ("--no-reference: the official checkout was not consulted"
-               if args.no_reference else
-               "no --reference given — pass one, or --no-reference to accept "
-               "an unverified model")
         for name in ("hparams", "model", "data"):
             results.append(Result(name, SKIP, why))
     if args.reproduce:

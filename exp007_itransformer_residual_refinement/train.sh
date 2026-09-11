@@ -145,10 +145,9 @@
 #                       pool: --num-workers is a budget for the process group,
 #                       not for one pool.
 #   --device cuda|cpu   default: cuda when available
-#   --overwrite         replace a run directory holding a DIFFERENT
-#                       configuration (refused by default, because the run id
-#                       does not separate two runs differing only in seed or an
-#                       optimizer override)
+#   --run-name NAME     override the run directory name. Rarely needed: the
+#                       name already carries a digest of whatever was
+#                       overridden, so two runs cannot collide
 #   --reference PATH    official checkout for the precheck
 #                       (default ./reference/iTransformer). MISSING IT IS AN
 #                       ERROR: the baseline's agreement with the paper is the
@@ -164,7 +163,9 @@
 # ---------------------------------------------------------------------------
 # WHAT COMES OUT
 # ---------------------------------------------------------------------------
-#   <out>/<dataset>_<seq>_<pred>_<variant>/
+#   <out>/<dataset>_<seq>_<pred>_<variant>[_<digest>]/
+#                       the digest appears only when something was overridden,
+#                       so two runs differing in a seed cannot share a directory
 #       config.json      the exact model + optimizer settings, for reloading
 #       checkpoint.pt    the best epoch by validation loss
 #       train_log.json   per-epoch train/val loss and the best epoch
@@ -176,13 +177,19 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${DATA_ROOT:-/group-volume/ts-dataset/ltsf}"
 THREADS="${THREADS:-}"   # empty = derive from the allocation
-DATASETS=""; PRED_LENS="96"; SEQ_LEN="96"; OUT=""
-REFINEMENT="off"; TRAIN_DEPTH=""; DEPTH=""; EVAL_DEPTHS=""
-COE_RESIDUAL=""; COE_BOTTLENECK=""; COE_STOCHASTIC=""; COE_BACKPROP=""
-COE_INTERNAL=""; COE_FUTURE_MARKS=""
-EPOCHS=""; BATCH=""; LR=""; SEED=""; LOADER_WORKERS=""; DEVICE=""; OVERWRITE=""
+ORIG=("$@")          # forwarded verbatim in job mode; see PASSTHRU below
+DATASETS=""; PRED_LENS="96"; SEQ_LEN="96"; OUT=""; RUN_NAME=""
+REFINEMENT="off"; COE=()   # chain settings, already in train.py's flag names
+EPOCHS=""; BATCH=""; LR=""; SEED=""; LOADER_WORKERS=""; DEVICE=""
 REFERENCE=""; SKIP_PRECHECK=""; NO_REFERENCE=""; MODE="local"; DRY=""
 NGPU="1"; GPU_TYPE="A100"; JOB_NAME=""; PRIORITY=""; EXP_ID=""; IMAGE=""
+
+#: Flags that configure the SUBMISSION, not the run. Job mode forwards
+#: everything else to itself inside the container, so these are the only ones
+#: it has to strip. Split by arity, because stripping a valueless flag as if
+#: it took one would eat the argument after it.
+JOB_ONLY=" --mode --ngpu --gpu-type --job-name --priority --exp-id --image "
+JOB_ONLY_SWITCHES=" --dry-run "
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -192,15 +199,20 @@ while [[ $# -gt 0 ]]; do
         --data-root)     DATA_ROOT="$2";     shift 2 ;;
         --out)           OUT="$2";           shift 2 ;;
         --refinement)    REFINEMENT="$2";    shift 2 ;;
-        --train-depth)   TRAIN_DEPTH="$2";   shift 2 ;;
-        --depth)         DEPTH="$2";         shift 2 ;;
-        --eval-depths)   EVAL_DEPTHS="$2";   shift 2 ;;
-        --coe-residual)  COE_RESIDUAL="$2";  shift 2 ;;
-        --coe-bottleneck) COE_BOTTLENECK="$2"; shift 2 ;;
-        --coe-stochastic-repeat) COE_STOCHASTIC="$2"; shift 2 ;;
-        --coe-backprop)  COE_BACKPROP="$2";  shift 2 ;;
-        --coe-internal-loss) COE_INTERNAL="$2"; shift 2 ;;
-        --coe-future-marks)  COE_FUTURE_MARKS="$2"; shift 2 ;;
+        --run-name)      RUN_NAME="$2";      shift 2 ;;
+        # The chain settings go into ONE array under the names train.py uses,
+        # so adding a knob is one line here instead of five. train.py returns
+        # them to their defaults for a baseline run and says which it ignored,
+        # so they are forwarded unconditionally and `python train.py` behaves
+        # the same way as this launcher.
+        --train-depth)   COE+=(--coe-train-depth-max "$2"); shift 2 ;;
+        --depth)         COE+=(--coe-eval-depth "$2");      shift 2 ;;
+        # Unquoted on purpose: argparse takes nargs="+" here, so "1 2 3" has to
+        # arrive as three arguments.
+        --eval-depths)   COE+=(--eval-depths $2);           shift 2 ;;
+        --coe-residual|--coe-bottleneck|--coe-stochastic-repeat|\
+        --coe-backprop|--coe-internal-loss|--coe-future-marks)
+                         COE+=("$1" "$2");                  shift 2 ;;
         --epochs)        EPOCHS="$2";        shift 2 ;;
         --batch-size)    BATCH="$2";         shift 2 ;;
         --lr)            LR="$2";            shift 2 ;;
@@ -208,7 +220,6 @@ while [[ $# -gt 0 ]]; do
         --num-workers)   THREADS="$2";       shift 2 ;;
         --loader-workers) LOADER_WORKERS="$2"; shift 2 ;;
         --device)        DEVICE="$2";        shift 2 ;;
-        --overwrite)     OVERWRITE="1";      shift ;;
         --reference)     REFERENCE="$2";     shift 2 ;;
         --no-reference)  NO_REFERENCE="1";   shift ;;
         --skip-precheck) SKIP_PRECHECK="1";  shift ;;
@@ -237,53 +248,40 @@ case "${REFINEMENT}" in on|off|true|false) ;; *)
 esac
 case "${REFINEMENT}" in on|true) REFINE="true" ;; *) REFINE="false" ;; esac
 
-PY="${PYTHON:-}"
-if [[ -z "${PY}" ]]; then
-    # exp007 imports nothing from tsm-trainer; that checkout is only a
-    # convenient INTERPRETER with torch/pandas already installed. Set PYTHON to
-    # a standalone venv (see requirements.txt) to drop even that.
-    for CAND in "${HERE}/.venv/bin/python" \
-                "/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer/.venv/bin/python" \
-                "$(command -v python3 || true)"; do
-        [[ -x "${CAND}" ]] && { PY="${CAND}"; break; }
-    done
-fi
-[[ -x "${PY}" ]] || { echo "no python found; set PYTHON=..." >&2; exit 1; }
-
 [[ -n "${OUT}" ]] || OUT="${HERE}/runs"
 [[ -n "${REFERENCE}" ]] || REFERENCE="${HERE}/reference/iTransformer"
 # CPU cap: one definition, sourced. See finar_cpu.sh / finar_cpu.py.
 . "$(dirname "${HERE}")/finar_cpu.sh"
-
-note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
+# Interpreter + note(): one definition, sourced. See _common.sh.
+. "${HERE}/_common.sh"
 
 # ---- job mode: hand the whole thing to one allocation and stop here --------
 if [[ "${MODE}" == "job" ]]; then
+    # This launcher's OWN arguments, minus the submission flags, are what the
+    # container runs. Re-declaring each of them in submit_job.py meant every
+    # new flag had to be spelled in five places, and a missed one failed only
+    # inside a submitted container, hours later.
+    PASSTHRU=(); i=0
+    while [[ ${i} -lt ${#ORIG[@]} ]]; do
+        A="${ORIG[$i]}"
+        if [[ "${JOB_ONLY}" == *" ${A} "* ]]; then
+            i=$((i + 2))
+        elif [[ "${JOB_ONLY_SWITCHES}" == *" ${A} "* ]]; then
+            i=$((i + 1))
+        else
+            PASSTHRU+=("${A}"); i=$((i + 1))
+        fi
+    done
     note "submitting: ${DATASETS} x ${PRED_LENS}, refinement=${REFINE}"
-    ${DRY} "${PY}" "${HERE}/submit_job.py" \
-        --dataset "${DATASETS}" --pred-len "${PRED_LENS}" \
-        --seq-len "${SEQ_LEN}" --data-root "${DATA_ROOT}" --out "${OUT}" \
-        --refinement "${REFINE}" --ngpu "${NGPU}" --gpu-type "${GPU_TYPE}" \
-        ${THREADS:+--num-workers "${THREADS}"} \
-        ${TRAIN_DEPTH:+--train-depth "${TRAIN_DEPTH}"} \
-        ${DEPTH:+--depth "${DEPTH}"} \
-        ${EVAL_DEPTHS:+--eval-depths "${EVAL_DEPTHS}"} \
-        ${COE_RESIDUAL:+--coe-residual "${COE_RESIDUAL}"} \
-        ${COE_BOTTLENECK:+--coe-bottleneck "${COE_BOTTLENECK}"} \
-        ${COE_STOCHASTIC:+--coe-stochastic-repeat "${COE_STOCHASTIC}"} \
-        ${COE_BACKPROP:+--coe-backprop "${COE_BACKPROP}"} \
-        ${COE_INTERNAL:+--coe-internal-loss "${COE_INTERNAL}"} \
-        ${COE_FUTURE_MARKS:+--coe-future-marks "${COE_FUTURE_MARKS}"} \
-        ${EPOCHS:+--epochs "${EPOCHS}"} ${BATCH:+--batch-size "${BATCH}"} \
-        ${LR:+--lr "${LR}"} ${SEED:+--seed "${SEED}"} \
-        ${LOADER_WORKERS:+--loader-workers "${LOADER_WORKERS}"} \
-        ${SKIP_PRECHECK:+--skip-precheck} \
-        ${NO_REFERENCE:+--no-reference} \
-        ${OVERWRITE:+--overwrite} \
+    # No ${DRY} prefix here: submit_job.py has its own --dry-run, which prints
+    # the ssub command instead of echoing the call that would print it.
+    "${PY}" "${HERE}/submit_job.py" \
+        --ngpu "${NGPU}" --gpu-type "${GPU_TYPE}" \
         ${JOB_NAME:+--job-name "${JOB_NAME}"} \
         ${PRIORITY:+--priority "${PRIORITY}"} \
         ${EXP_ID:+--exp-id "${EXP_ID}"} ${IMAGE:+--image "${IMAGE}"} \
-        ${DRY:+--dry-run}
+        ${DRY:+--dry-run} \
+        -- ${PASSTHRU[@]+"${PASSTHRU[@]}"}
     exit 0
 fi
 
@@ -292,49 +290,19 @@ if [[ -n "${SKIP_PRECHECK}" ]]; then
     note "SKIPPING the precheck (--skip-precheck): the baseline's agreement with the paper and the refinement's reachability are UNVERIFIED for this run"
 else
     note "=== precheck"
-    PRECHECK_ARGS=(--data-root "${DATA_ROOT}" --seq-len "${SEQ_LEN}"
-                   ${THREADS:+--num-workers "${THREADS}"})
-    if [[ -d "${REFERENCE}" ]]; then
-        PRECHECK_ARGS+=(--reference "${REFERENCE}")
-        [[ -n "${NO_REFERENCE}" ]] && PRECHECK_ARGS+=(--no-reference)
-    elif [[ -n "${NO_REFERENCE}" ]]; then
-        note "--no-reference: training WITHOUT checking this model against the official one"
-        PRECHECK_ARGS+=(--no-reference)
-    else
-        # Supplying --no-reference automatically here is what turned the
-        # precheck's refusal back into a pass: the launcher would quietly
-        # train and report with the baseline's agreement to the paper never
-        # checked. The gap has to be the operator's decision.
-        echo "no official checkout at ${REFERENCE}." >&2
-        echo "The baseline reproducing the paper is the premise of this" >&2
-        echo "experiment, so it is checked, not assumed. Either:" >&2
-        echo "  bash prepare_data.sh --with-reference   # get the checkout" >&2
-        echo "  bash train.sh ... --reference PATH      # point at one" >&2
-        echo "  bash train.sh ... --no-reference        # accept the gap" >&2
-        exit 2
-    fi
-    ${DRY} "${PY}" "${HERE}/precheck.py" "${PRECHECK_ARGS[@]}"
+    # precheck.py owns the policy: a checkout that is absent or unusable is a
+    # SKIP, and any SKIP exits non-zero unless --no-reference says the gap is
+    # accepted. Re-deciding that here gave two gates that disagreed on an
+    # existing-but-wrong --reference path.
+    ${DRY} "${PY}" "${HERE}/precheck.py" \
+        --data-root "${DATA_ROOT}" --seq-len "${SEQ_LEN}" \
+        --reference "${REFERENCE}" \
+        ${NO_REFERENCE:+--no-reference} \
+        ${THREADS:+--num-workers "${THREADS}"}
 fi
 
 # ---- train ----------------------------------------------------------------
 mkdir -p "${OUT}"
-# The COE flags describe a chain a baseline model does not have, and train.py
-# REFUSES coe_train_depth_max/coe_eval_depth > 1 without it (silently clamping
-# would mean the "depth 3" run was depth 1). So the documented
-# `for R in off on` loop, which passes the same flags to both arms, would fail
-# on the baseline. Dropping them here — out loud — is what makes that loop the
-# single-variable comparison it is written as.
-if [[ "${REFINE}" != "true" ]]; then
-    DROPPED=""
-    for PAIR in "--train-depth:${TRAIN_DEPTH}" "--depth:${DEPTH}"                 "--eval-depths:${EVAL_DEPTHS}" "--coe-residual:${COE_RESIDUAL}"                 "--coe-bottleneck:${COE_BOTTLENECK}"                 "--coe-stochastic-repeat:${COE_STOCHASTIC}"                 "--coe-backprop:${COE_BACKPROP}"                 "--coe-internal-loss:${COE_INTERNAL}"                 "--coe-future-marks:${COE_FUTURE_MARKS}"; do
-        [[ -n "${PAIR#*:}" ]] && DROPPED="${DROPPED} ${PAIR%%:*}"
-    done
-    [[ -n "${DROPPED}" ]] && note "--refinement off: ignoring${DROPPED} (a baseline has no chain to configure)"
-    TRAIN_DEPTH=""; DEPTH=""; EVAL_DEPTHS=""; COE_RESIDUAL=""
-    COE_BOTTLENECK=""; COE_STOCHASTIC=""; COE_BACKPROP=""
-    COE_INTERNAL=""; COE_FUTURE_MARKS=""
-fi
-
 for DS in ${DATASETS}; do
     for H in ${PRED_LENS}; do
         note "=== ${DS} / pred_len ${H} / refinement ${REFINE}"
@@ -343,20 +311,12 @@ for DS in ${DATASETS}; do
             --data-root "${DATA_ROOT}" --out "${OUT}" \
             --refinement "${REFINE}" \
             ${THREADS:+--num-workers "${THREADS}"} \
-            ${TRAIN_DEPTH:+--coe-train-depth-max "${TRAIN_DEPTH}"} \
-            ${DEPTH:+--coe-eval-depth "${DEPTH}"} \
-            ${EVAL_DEPTHS:+--eval-depths ${EVAL_DEPTHS}} \
-            ${COE_RESIDUAL:+--coe-residual "${COE_RESIDUAL}"} \
-            ${COE_BOTTLENECK:+--coe-bottleneck "${COE_BOTTLENECK}"} \
-            ${COE_STOCHASTIC:+--coe-stochastic-repeat "${COE_STOCHASTIC}"} \
-            ${COE_BACKPROP:+--coe-backprop "${COE_BACKPROP}"} \
-            ${COE_INTERNAL:+--coe-internal-loss "${COE_INTERNAL}"} \
-            ${COE_FUTURE_MARKS:+--coe-future-marks "${COE_FUTURE_MARKS}"} \
+            ${RUN_NAME:+--run-name "${RUN_NAME}"} \
+            ${COE[@]+"${COE[@]}"} \
             ${EPOCHS:+--epochs "${EPOCHS}"} ${BATCH:+--batch-size "${BATCH}"} \
             ${LR:+--learning-rate "${LR}"} ${SEED:+--seed "${SEED}"} \
             ${LOADER_WORKERS:+--loader-workers "${LOADER_WORKERS}"} \
             ${DEVICE:+--device "${DEVICE}"} \
-            ${OVERWRITE:+--overwrite} \
             || note "FAILED: ${DS}/${H} (continuing with the rest)"
     done
 done

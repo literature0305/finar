@@ -24,6 +24,8 @@ from finar_cpu import limit_cpu  # noqa: E402
 limit_cpu(quiet=True)
 
 import paper  # noqa: E402
+import run_eval  # noqa: E402
+from itransformer import ModelConfig  # noqa: E402
 
 logger = logging.getLogger("finar_exp007")
 
@@ -36,29 +38,38 @@ def collect(root: Path) -> list[dict]:
     for path in sorted(root.glob("*/metrics.json")):
         m = json.loads(path.read_text())
         want = paper.target(m["dataset"], m["pred_len"]) or (None, None)
-        for depth, score in sorted(m["by_depth"].items(), key=lambda kv: int(kv[0])):
+        # The protocol is derived from the run's OWN config.json, not read back
+        # out of metrics.json: a run written before the fingerprint existed has
+        # no digest there, and a missing digest defaulting to "" made every
+        # such run match every other one — exactly the comparison the
+        # fingerprint exists to refuse.
+        protocol = _protocol_of_run(path.parent)
+        digest = run_eval.protocol_digest(protocol)
+        headline_depth = int(m.get("headline_depth",
+                                   max(int(d) for d in m["by_depth"])))
+        for depth, score in sorted(m["by_depth"].items(),
+                                   key=lambda kv: int(kv[0])):
+            is_headline = int(depth) == headline_depth
             rows.append({
                 "dataset": m["dataset"], "pred_len": m["pred_len"],
                 "variant": m["variant"], "depth": int(depth),
-                # Two runs may only be compared when these agree; see
-                # run_eval.PROTOCOL_FIELDS.
-                "protocol": m.get("protocol_digest", ""),
-                "_protocol": m.get("protocol", {}),
+                "protocol": digest, "_protocol": protocol,
                 "mse": round(score["mse"], 6), "mae": round(score["mae"], 6),
                 "paper_mse": want[0], "paper_mae": want[1],
-                # The verdict belongs to the run's HEADLINE depth — the one
-                # the checkpoint is configured to run. A sweep's other depths
-                # are measurements around it, not what it claims to be.
-                "verdict": (m["paper_verdict"]
-                            if int(depth) == int(m.get(
-                                "headline_depth",
-                                max(int(d) for d in m["by_depth"])))
-                            else ""),
-                "headline": int(depth) == int(m.get(
-                    "headline_depth", max(int(d) for d in m["by_depth"]))),
+                # The verdict belongs to the run's HEADLINE depth — the one the
+                # checkpoint is configured to run. A sweep's other depths are
+                # measurements around it, not what it claims to be.
+                "verdict": m["paper_verdict"] if is_headline else "",
+                "headline": is_headline,
                 "run": m["run"],
             })
     return rows
+
+
+def _protocol_of_run(run_dir: Path) -> dict:
+    """The comparison fingerprint of a run directory, from its `config.json`."""
+    meta = json.loads((run_dir / "config.json").read_text())
+    return run_eval.protocol_of(meta, ModelConfig.from_dict(meta["model"]))
 
 
 def compare(rows: list[dict]) -> list[dict]:
@@ -104,28 +115,27 @@ def compare(rows: list[dict]) -> list[dict]:
         if variant == "baseline":
             continue
         group, best = headline[key], best_at[key]
-        if len(group) > 1:
-            out.append({
-                "dataset": dataset, "pred_len": horizon, "variant": variant,
-                "protocol": digest, "baseline_mse": None,
-                "refined_mse": None, "improvement_pct": None,
-                "eval_depth": None, "refined_mse_best_depth": None,
-                "improvement_pct_best_depth": None, "best_depth": None,
-                "note": f"{len(group)} runs of this variant share a protocol "
-                        f"({', '.join(sorted(r['run'] for r in group))}) — "
-                        f"ambiguous, not compared"})
-            continue
-        row = group[0]
-        pool = baselines.get((dataset, horizon), [])
-        matched = [b for b in pool if b["protocol"] == digest]
         record = {
             "dataset": dataset, "pred_len": horizon, "variant": variant,
-            "protocol": digest, "baseline_mse": None, "refined_mse": row["mse"],
-            "improvement_pct": None, "eval_depth": row["depth"],
-            "refined_mse_best_depth": best["mse"],
-            "improvement_pct_best_depth": None, "best_depth": best["depth"],
-            "note": "",
+            "protocol": digest, "baseline_mse": None, "refined_mse": None,
+            "improvement_pct": None, "eval_depth": None,
+            "refined_mse_best_depth": None, "improvement_pct_best_depth": None,
+            "best_depth": None, "note": "",
         }
+        if len(group) > 1:
+            record["note"] = (
+                f"{len(group)} runs of this variant share a protocol "
+                f"({', '.join(sorted(r['run'] for r in group))}) — ambiguous, "
+                f"not compared")
+            out.append(record)
+            continue
+        row = group[0]
+        record["refined_mse"] = row["mse"]
+        record["eval_depth"] = row["depth"]
+        record["refined_mse_best_depth"] = best["mse"]
+        record["best_depth"] = best["depth"]
+        pool = baselines.get((dataset, horizon), [])
+        matched = [b for b in pool if b["protocol"] == digest]
         if len(matched) > 1:
             record["note"] = (
                 f"{len(matched)} baseline runs share this protocol "

@@ -109,6 +109,7 @@ these runs; the file records both so the choice can be audited.
 | `build_table.py` | every run into one csv, one comparison csv, one figure |
 | `prepare_data.sh` / `verify_data.py` | fetch the nine datasets and check their shape |
 | `train.sh` / `eval.sh` / `submit_job.py` | the launchers, local or via `ssub` |
+| `_common.sh` | the interpreter search and `note()`, sourced by all three |
 
 Nothing imports tsm-trainer. The launchers borrow that checkout's interpreter
 when `PYTHON` is unset; `requirements.txt` is there to drop even that.
@@ -146,15 +147,20 @@ depth 4.
 selection on the test set and is labelled as an upper bound. When a baseline
 misses its published cell, every row against it says so.
 
-A pair is only formed when the two runs share a **protocol** — lookback, seed,
-optimizer settings, model dimensions, data root (`run_eval.PROTOCOL_FIELDS`).
-Flipping `--refinement` changes none of those, so a legitimate pair always
-matches; a refinement measured against a baseline from another session with a
-different seed is refused and named, rather than reported with a footnote. For
-the same reason `train.py` refuses to reuse a run directory whose stored config
-differs (the run id does not separate two runs differing only in a seed), and
-deletes the previous `checkpoint.pt` / `metrics.json` before training so a
-failed rerun cannot leave the old numbers behind.
+A pair is only formed when the two runs share a **protocol**: everything in
+`config.json` except the `coe_*` fields (the thing under comparison), the data
+root (a mount path, not an identity) and the derived parameter count. A
+denylist, so a setting added later is protected by default — the allowlist this
+started as had already lost `activation`. Flipping `--refinement` changes none
+of it, so a legitimate pair always matches; a refinement measured against a
+baseline from another session with a different seed is refused and named,
+rather than reported with a footnote.
+
+Run directories are named `<dataset>_<seq>_<pred>_<variant>` plus a digest of
+whatever was overridden, so two runs differing only in a seed cannot share one
+and nothing has to be refused. Each run deletes the previous `checkpoint.pt` /
+`metrics.json` before training, so a rerun that fails early cannot leave the
+old numbers to be scored as the new ones.
 
 ## A.8 What is deliberately not ported
 

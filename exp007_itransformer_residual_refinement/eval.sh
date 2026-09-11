@@ -71,21 +71,11 @@ case "${STAGE}" in eval|table|all) ;; *)
     echo "--stage must be eval, table or all (got ${STAGE})" >&2; exit 2 ;;
 esac
 
-PY="${PYTHON:-}"
-if [[ -z "${PY}" ]]; then
-    for CAND in "${HERE}/.venv/bin/python" \
-                "/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer/.venv/bin/python" \
-                "$(command -v python3 || true)"; do
-        [[ -x "${CAND}" ]] && { PY="${CAND}"; break; }
-    done
-fi
-[[ -x "${PY}" ]] || { echo "no python found; set PYTHON=..." >&2; exit 1; }
-
 [[ -n "${OUT}" ]] || OUT="${HERE}/runs"
 # CPU cap: one definition, sourced. See finar_cpu.sh / finar_cpu.py.
 . "$(dirname "${HERE}")/finar_cpu.sh"
-
-note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
+# Interpreter + note(): one definition, sourced. See _common.sh.
+. "${HERE}/_common.sh"
 
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     if [[ ${#RUN_DIRS[@]} -eq 0 ]]; then

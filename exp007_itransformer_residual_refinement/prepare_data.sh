@@ -43,8 +43,8 @@
 # ---------------------------------------------------------------------------
 #   --data-root PATH    where the dataset directories live
 #                       (default: /group-volume/ts-dataset/ltsf)
-#   --datasets "A B"    subset to fetch. Default: all nine.
-#                       ETTh1 ETTh2 ETTm1 ETTm2 ECL Traffic Weather
+#   --datasets "A B"    subset to fetch. Default: every dataset data.py knows
+#                       about — ETTh1 ETTh2 ETTm1 ETTm2 ECL Traffic Weather
 #                       Exchange Solar
 #   --with-reference    also `git clone --depth 1` thuml/iTransformer, which
 #                       precheck.py compares this implementation against
@@ -58,7 +58,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_ROOT="${DATA_ROOT:-/group-volume/ts-dataset/ltsf}"
-DATASETS="ETTh1 ETTh2 ETTm1 ETTm2 ECL Traffic Weather Exchange Solar"
+DATASETS=""          # empty = every dataset data.py knows about
 REFERENCE_DIR="${HERE}/reference/iTransformer"
 WITH_REFERENCE=""; VERIFY_ONLY=""; FORCE=""; STRICT=""
 
@@ -76,33 +76,45 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-PY="${PYTHON:-}"
-if [[ -z "${PY}" ]]; then
-    for CAND in "${HERE}/.venv/bin/python" \
-                "/group-volume/workspace/mun-hak.lee/experiments/tsm-trainer_001/tsm-trainer/.venv/bin/python" \
-                "$(command -v python3 || true)"; do
-        [[ -x "${CAND}" ]] && { PY="${CAND}"; break; }
-    done
-fi
-[[ -x "${PY}" ]] || { echo "no python found; set PYTHON=..." >&2; exit 1; }
+THREADS="${THREADS:-}"   # empty = derive from the allocation
+# CPU cap: verify_data.py imports data.py, which pulls numpy/pandas/torch —
+# uncapped, that is the 255-logical-CPU incident finar_cpu.py exists for.
+. "$(dirname "${HERE}")/finar_cpu.sh"
+# Interpreter + note(): one definition, sourced. See _common.sh.
+. "${HERE}/_common.sh"
 
 HF="https://huggingface.co/datasets/thuml/Time-Series-Library/resolve/main"
 LSTNET="https://raw.githubusercontent.com/laiguokun/multivariate-time-series-data/master"
 
-# name | subdirectory | filename | url | post-processing
+# name | url | post-processing. The DESTINATION is not here: data.py's
+# registry already owns which subdirectory and filename each dataset lives in,
+# and a second copy of that drifts into downloading to a path the loader never
+# reads — which verify_data.py (which does use the registry) then reports as
+# [MISSING] for a file that was just fetched.
 SPECS=(
-    "ETTh1|ETT-small|ETTh1.csv|${HF}/ETT-small/ETTh1.csv|"
-    "ETTh2|ETT-small|ETTh2.csv|${HF}/ETT-small/ETTh2.csv|"
-    "ETTm1|ETT-small|ETTm1.csv|${HF}/ETT-small/ETTm1.csv|"
-    "ETTm2|ETT-small|ETTm2.csv|${HF}/ETT-small/ETTm2.csv|"
-    "ECL|electricity|electricity.csv|${HF}/electricity/electricity.csv|"
-    "Traffic|traffic|traffic.csv|${HF}/traffic/traffic.csv|"
-    "Weather|weather|weather.csv|${HF}/weather/weather.csv|"
-    "Exchange|exchange_rate|exchange_rate.csv|${HF}/exchange_rate/exchange_rate.csv|"
-    "Solar|Solar|solar_AL.txt|${LSTNET}/solar-energy/solar_AL.txt.gz|gunzip"
+    "ETTh1|${HF}/ETT-small/ETTh1.csv|"
+    "ETTh2|${HF}/ETT-small/ETTh2.csv|"
+    "ETTm1|${HF}/ETT-small/ETTm1.csv|"
+    "ETTm2|${HF}/ETT-small/ETTm2.csv|"
+    "ECL|${HF}/electricity/electricity.csv|"
+    "Traffic|${HF}/traffic/traffic.csv|"
+    "Weather|${HF}/weather/weather.csv|"
+    "Exchange|${HF}/exchange_rate/exchange_rate.csv|"
+    "Solar|${LSTNET}/solar-energy/solar_AL.txt.gz|gunzip"
 )
 
-note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
+# One python call for all nine destinations, from data.py's own registry.
+declare -A DEST_OF
+while IFS=$'\t' read -r NAME DEST; do
+    DEST_OF["${NAME}"]="${DEST}"
+done < <("${PY}" -c '
+import sys
+import data
+root = sys.argv[1]
+for name in sorted(data.DATASETS):
+    print(f"{name}\t{data.dataset_path(root, name)}")' "${DATA_ROOT}")
+[[ ${#DEST_OF[@]} -gt 0 ]] || { echo "could not read the dataset layout from data.py" >&2; exit 1; }
+[[ -n "${DATASETS}" ]] || DATASETS="${!DEST_OF[*]}"
 
 wanted() {
     local name="$1"
@@ -112,14 +124,14 @@ wanted() {
 
 if [[ -z "${VERIFY_ONLY}" ]]; then
     for SPEC in "${SPECS[@]}"; do
-        IFS='|' read -r NAME SUB FILE URL POST <<<"${SPEC}"
+        IFS='|' read -r NAME URL POST <<<"${SPEC}"
         wanted "${NAME}" || continue
-        DEST="${DATA_ROOT}/${SUB}/${FILE}"
+        DEST="${DEST_OF[${NAME}]}"
         if [[ -s "${DEST}" && -z "${FORCE}" ]]; then
             note "have ${NAME} (${DEST})"
             continue
         fi
-        mkdir -p "${DATA_ROOT}/${SUB}"
+        mkdir -p "$(dirname "${DEST}")"
         note "fetching ${NAME} <- ${URL}"
         # To a temporary name, moved into place only on success: an interrupted
         # download that lands on the final path is the thing `-s` above would

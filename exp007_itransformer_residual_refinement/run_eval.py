@@ -30,7 +30,8 @@ limit_cpu(argv_workers(), quiet=True)
 import torch  # noqa: E402
 
 import paper  # noqa: E402
-from data import build_dataset, build_loader  # noqa: E402
+from data import (DATASETS, build_dataset, build_loader,  # noqa: E402
+                  n_time_features)
 from itransformer import ITransformer, ModelConfig  # noqa: E402
 
 logger = logging.getLogger("finar_exp007")
@@ -53,25 +54,46 @@ def load_checkpoint(run_dir: str | Path, device: str = "cpu"):
     return model.to(device).eval(), cfg, meta
 
 
-#: Everything that must match before two runs may be compared. The variant
-#: (baseline vs a COE configuration) is deliberately NOT here — that is the
-#: thing under comparison; everything else is the protocol it has to share.
-PROTOCOL_FIELDS = ("dataset", "freq", "seq_len", "pred_len", "d_model", "d_ff",
-                   "e_layers", "n_heads", "dropout", "use_norm", "n_marks",
-                   "batch_size", "learning_rate", "train_epochs", "patience",
-                   "lradj", "seed", "data_root")
+def batch_to_device(batch, cfg: ModelConfig, device: str, targets: bool = True):
+    """`(x, y, x_mark, y_mark)` on `device`, marks dropped when the model has
+    none. The drop rule lives here alone: `ITransformer.forward` raises when it
+    disagrees with `n_marks`, and two copies of it is how they come to.
+
+    `targets=False` leaves `y` on the host, for a caller that scores there."""
+    batch_x, batch_y, x_mark, y_mark = batch
+    batch_x = batch_x.float().to(device)
+    batch_y = batch_y.float().to(device) if targets else batch_y
+    if cfg.n_marks:
+        return batch_x, batch_y, x_mark.float().to(device), \
+            y_mark.float().to(device)
+    return batch_x, batch_y, None, None
+
+
+#: What a protocol is NOT. Everything else in `config.json` has to match before
+#: two runs may be compared, so a setting added later is protected by default —
+#: an allowlist would silently leave it out, and did (`activation` was missing).
+#:
+#: The `coe_*` fields are the thing under comparison. `data_root` is the mount
+#: path, which differs between a local run and the same run in a container
+#: without the datasets differing at all — `dataset` and `freq` carry the
+#: identity that matters, and `build_splits` asserts the shape. `parameters` is
+#: derived from the rest.
+PROTOCOL_EXCLUDE = ("data_root", "parameters")
 
 
 def protocol_of(meta: dict, cfg: ModelConfig) -> dict:
     """The fields a baseline and a refinement must agree on to be comparable.
 
-    Carried into `metrics.json` so `build_table.py` can refuse to credit a
-    refinement with a gain measured against a baseline trained under different
-    settings — a results directory accumulated over several sessions makes that
-    easy to do by accident, and the resulting number looks like a result.
+    `build_table.py` refuses to credit a refinement with a gain measured
+    against a baseline trained under different settings — a results directory
+    accumulated over several sessions makes that easy to do by accident, and
+    the resulting number looks like a result.
     """
     source = {**meta, **meta.get("optim", {}), **cfg.to_dict()}
-    return {k: source[k] for k in PROTOCOL_FIELDS if k in source}
+    source.pop("model", None)
+    source.pop("optim", None)
+    return {k: v for k, v in sorted(source.items())
+            if k not in PROTOCOL_EXCLUDE and not k.startswith("coe_")}
 
 
 def protocol_digest(protocol: dict) -> str:
@@ -112,30 +134,36 @@ def test_metrics(model, cfg: ModelConfig, dataset, device: str,
     """
     loader = build_loader(dataset, "test", batch_size, workers)
     max_depth = max(depths)
-    se = {d: 0.0 for d in depths}
-    ae = {d: 0.0 for d in depths}
+    # Only a real sweep needs every pass back; asking for them at a single
+    # depth makes the model denormalize and retain max_depth predictions where
+    # one is read.
+    want_all = len(depths) > 1
+    zero = torch.zeros((), dtype=torch.float64, device=device)
+    se = {d: zero.clone() for d in depths}
+    ae = {d: zero.clone() for d in depths}
     count = 0
     model.eval()
-    for batch_x, batch_y, x_mark, y_mark in loader:
-        batch_x = batch_x.float().to(device)
-        batch_y = batch_y.float().to(device)
-        if cfg.n_marks:
-            x_mark = x_mark.float().to(device)
-            y_mark = y_mark.float().to(device)
-        else:
-            x_mark = y_mark = None
+    for batch in loader:
+        batch_x, batch_y, x_mark, y_mark = batch_to_device(batch, cfg, device)
         # ONE forward for the whole sweep: pass i's forecast is the input to
-        # pass i+1, so the depths are already nested inside a single chain.
+        # pass i+1, so the depths are already nested inside a single chain
+        # (precheck's R5 pins that).
         outs = model(batch_x, x_mark, y_mark, depth=max_depth,
-                     return_all_passes=True)
+                     return_all_passes=want_all)
+        if not want_all:
+            outs = [outs] * max_depth
         count += batch_y.numel()
         for d in depths:
+            # Accumulated on the DEVICE: a float() per depth per batch is a
+            # host sync, and at four depths that is eight syncs a batch to
+            # move sixteen bytes.
             diff = (outs[d - 1] - batch_y).double()
-            se[d] += float((diff * diff).sum())
-            ae[d] += float(diff.abs().sum())
+            se[d] += (diff * diff).sum()
+            ae[d] += diff.abs().sum()
     if not count:
         raise RuntimeError("the test split produced no windows")
-    return {d: {"mse": se[d] / count, "mae": ae[d] / count} for d in depths}
+    return {d: {"mse": float(se[d]) / count, "mae": float(ae[d]) / count}
+            for d in depths}
 
 
 def compare_to_paper(dataset: str, pred_len: int, mse: float, mae: float):
@@ -159,8 +187,20 @@ def evaluate(run_dir: str | Path, data_root: str, device: str,
     run_dir = Path(run_dir)
     model, cfg, meta = load_checkpoint(run_dir, device)
     depths = resolve_depths(cfg, depths)
+    freq = meta.get("freq", "h")
     dataset = build_dataset(meta["dataset"], data_root, "test",
-                            cfg.seq_len, cfg.pred_len, meta.get("freq", "h"))
+                            cfg.seq_len, cfg.pred_len, freq)
+    # ONCE, where the checkpoint's config and the dataset's frequency first
+    # meet. The mark tokens are dropped by position inside the model, so a
+    # count that disagrees is absorbed by the projector's output slice rather
+    # than raised: a checkpoint trained at one --freq would keep scoring at
+    # another, quietly.
+    want_marks = n_time_features(freq) if DATASETS[meta["dataset"]]["marks"] else 0
+    if cfg.n_marks != want_marks:
+        raise ValueError(
+            f"{run_dir.name} was trained with n_marks={cfg.n_marks}, but "
+            f"{meta['dataset']} at --freq {freq} supplies {want_marks} "
+            f"timestamp features — this checkpoint cannot be scored here.")
     scores = test_metrics(model, cfg, dataset, device, batch_size, workers,
                           depths)
     # The HEADLINE number is the depth the checkpoint is configured to run, not

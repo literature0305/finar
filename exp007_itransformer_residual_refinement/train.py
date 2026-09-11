@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import hashlib
 import random
 import sys
 import time
@@ -36,7 +37,9 @@ import torch.nn as nn  # noqa: E402
 
 import paper  # noqa: E402
 import run_eval  # noqa: E402
-from data import DATASETS, build_dataset, build_loader, n_time_features  # noqa: E402
+from run_eval import batch_to_device  # noqa: E402
+from data import (DATASETS, build_loader, build_splits,  # noqa: E402
+                  n_time_features)
 from itransformer import ITransformer, ModelConfig, count_parameters  # noqa: E402
 
 logger = logging.getLogger("finar_exp007")
@@ -105,72 +108,100 @@ class EarlyStopping:
 #: for `run_eval.py` and `build_table.py` to pick up as this one's.
 RUN_ARTIFACTS = ("checkpoint.pt", "metrics.json", "train_log.json")
 
-
-def _differing_keys(old: dict, new: dict, prefix: str = "") -> list[str]:
-    """Dotted names of the fields that differ. A bare "optim differ" is not
-    something an operator can act on — they need to see "optim.seed"."""
-    out = []
-    for key in sorted(set(old) | set(new)):
-        a, b = old.get(key), new.get(key)
-        if a == b:
-            continue
-        name = f"{prefix}{key}"
-        if isinstance(a, dict) and isinstance(b, dict):
-            out += _differing_keys(a, b, f"{name}.")
-        else:
-            out.append(name)
-    return out
+#: Arguments that change what a run IS, beyond the dataset/lengths/variant the
+#: run id already spells out. Any of them at a non-default value earns the run
+#: its own directory (see `_run_id`).
+TUNABLES = (
+    "freq", "d_model", "d_ff", "e_layers", "n_heads", "dropout", "use_norm",
+    # coe_train_depth_max / residual / bottleneck are already in the variant
+    # name; coe_eval_depth is not, and it changes what the run REPORTS.
+    "coe_eval_depth",
+    "coe_stochastic_repeat", "coe_backprop", "coe_internal_loss",
+    "coe_future_marks", "batch_size", "learning_rate", "epochs", "patience",
+    "lradj", "seed", "amp",
+)
 
 
-def _claim_run_dir(run_dir: Path, config: dict, overwrite: bool) -> None:
-    """Take ownership of a run directory, or refuse it.
+def _run_id(args, cfg: ModelConfig, parser_defaults: dict) -> str:
+    """A directory name that is a FUNCTION of the configuration.
 
-    The run id is built from dataset, lengths and variant, which does NOT
-    separate two runs differing only in seed, backprop mode, learning rate or
-    any other override — they would share a directory. Silently reusing it is
-    how a rerun ends up reporting the previous checkpoint: `config.json` is
-    rewritten, the old `checkpoint.pt` survives, and an early failure leaves
-    the two describing different models.
+    `{dataset}_{seq}_{pred}_{variant}` alone does not separate two runs
+    differing only in a seed, a learning rate or a backprop mode — they land in
+    one directory, and then "which checkpoint is this" has no answer. Refusing
+    the collision (what this used to do) turns a naming defect into an operator
+    decision on every rerun; naming the runs apart removes it.
 
-    So: a directory whose config differs is refused unless `--overwrite`, and
-    every result artifact is deleted before training either way.
+    The suffix appears only when something was overridden, so the canonical run
+    of each variant keeps its readable name.
     """
-    existing = run_dir / "config.json"
-    if existing.is_file() and not overwrite:
-        try:
-            old = json.loads(existing.read_text())
-        except json.JSONDecodeError:
-            old = None
-        if old is not None:
-            # Derived from the config, written after the model is built, and
-            # absent from the dict this compares — leaving it in would make
-            # every rerun of an IDENTICAL config look like a clash.
-            old.pop("parameters", None)
-        if old is not None and old != config:
-            differing = _differing_keys(old, config)
-            raise SystemExit(
-                f"{run_dir} already holds a run with a different "
-                f"configuration ({', '.join(differing)} differ). Its id does "
-                f"not distinguish the two, so continuing would mix them. Pass "
-                f"--run-name for a separate directory, or --overwrite to "
-                f"replace what is there.")
+    name = f"{args.dataset}_{cfg.seq_len}_{cfg.pred_len}_{cfg.variant}"
+    overrides = {k: v for k, v in vars(args).items()
+                 if k in TUNABLES and v != parser_defaults[k]}
+    if not overrides:
+        return name
+    blob = json.dumps(overrides, sort_keys=True, default=str).encode()
+    return f"{name}_{hashlib.sha256(blob).hexdigest()[:8]}"
+
+
+def _claim_run_dir(run_dir: Path, config: dict) -> None:
+    """Delete the previous run's results before this one starts.
+
+    `_run_id` makes a shared directory mean a shared configuration, so there is
+    nothing to refuse here — but a rerun still has to clear what is there.
+    Leaving it is how a rerun that fails early gets SCORED: `config.json` is
+    rewritten, the old `checkpoint.pt` survives, and `run_eval` reports the
+    previous model under the new config.
+    """
     for name in RUN_ARTIFACTS:
         (run_dir / name).unlink(missing_ok=True)
-    existing.write_text(json.dumps(config, indent=2))
+    (run_dir / "config.json").write_text(json.dumps(config, indent=2))
+
+
+#: Every argument that only means something for a chain. A baseline run
+#: returns them to their defaults. `eval_depths` belongs here too: it is not a
+#: `--coe-*` flag but `run_eval.resolve_depths` refuses a depth above 1 for a
+#: baseline, so leaving it set killed the run AFTER training finished.
+COE_ARGS = ("coe_train_depth_max", "coe_eval_depth", "coe_residual",
+            "coe_bottleneck", "coe_stochastic_repeat", "coe_backprop",
+            "coe_internal_loss", "coe_future_marks", "eval_depths")
+
+
+def neutralise_coe(args, parser_defaults: dict) -> list[str]:
+    """Return the chain settings to their defaults for a baseline run.
+
+    A baseline has no chain to configure, and `ModelConfig` REFUSES a depth
+    above 1 without one — so `--refinement off --train-depth 3` would simply
+    fail. That makes the one thing this experiment is for, running the two arms
+    with everything else held fixed, impossible to express as one flag set.
+    Neutralising here rather than in the launcher keeps the rule in the layer
+    that records it (`config.json`) and reachable by `python train.py`.
+
+    Returns the names of the arguments it ignored, for the caller to log.
+    """
+    if args.refinement:
+        return []
+    ignored = []
+    for name in COE_ARGS:
+        if getattr(args, name) != parser_defaults[name]:
+            ignored.append("--" + name.replace("_", "-"))
+        setattr(args, name, parser_defaults[name])
+    return ignored
 
 
 def build_config(args) -> tuple[ModelConfig, dict]:
     """Resolve the model config: official defaults, then explicit overrides."""
     official = paper.hparams(args.dataset, args.pred_len)
     marks = DATASETS[args.dataset]["marks"]
+    d_model = args.d_model or official["d_model"]
     cfg = ModelConfig(
         seq_len=args.seq_len,
         pred_len=args.pred_len,
-        d_model=args.d_model if args.d_model else official["d_model"],
-        d_ff=args.d_ff if args.d_ff else (
-            args.d_model if args.d_model else official["d_ff"]),
-        e_layers=args.e_layers if args.e_layers else official["e_layers"],
-        n_heads=args.n_heads if args.n_heads else official["n_heads"],
+        d_model=d_model,
+        # Every official script sets d_ff = d_model (paper.hparams pins that),
+        # so --d-model alone moves both.
+        d_ff=args.d_ff or d_model,
+        e_layers=args.e_layers or official["e_layers"],
+        n_heads=args.n_heads or official["n_heads"],
         dropout=official["dropout"] if args.dropout is None else args.dropout,
         activation=official["activation"],
         use_norm=official["use_norm"] if args.use_norm is None else args.use_norm,
@@ -197,16 +228,6 @@ def build_config(args) -> tuple[ModelConfig, dict]:
     return cfg, optim
 
 
-def _batch_to_device(batch, cfg, device):
-    batch_x, batch_y, x_mark, y_mark = batch
-    batch_x = batch_x.float().to(device)
-    batch_y = batch_y.float().to(device)
-    if cfg.n_marks:
-        return batch_x, batch_y, x_mark.float().to(device), \
-            y_mark.float().to(device)
-    return batch_x, batch_y, None, None
-
-
 def _loss_for_batch(model, cfg, criterion, batch_x, batch_y, x_mark, y_mark):
     """Final-pass loss, or the mean over every pass under `coe_internal_loss`.
 
@@ -229,22 +250,28 @@ def validate(model, cfg, loader, criterion, device) -> float:
     checkpoint, so it is reproduced exactly."""
     model.eval()
     losses = []
-    for batch in loader:
-        batch_x, batch_y, x_mark, y_mark = _batch_to_device(batch, cfg, device)
+    for batch_x, batch_y, x_mark, y_mark in loader:
+        # The TARGET never goes to the device: the official vali() computes
+        # this loss on the host, and moving `batch_y` there only to copy it
+        # straight back doubled the transfer for an identical number.
+        batch_x, _, x_mark, y_mark = batch_to_device(
+            (batch_x, batch_y, x_mark, y_mark), cfg, device, targets=False)
         out = model(batch_x, x_mark, y_mark)
-        losses.append(criterion(out.detach().cpu(), batch_y.detach().cpu()).item())
+        losses.append(criterion(out.cpu(), batch_y.float()).item())
     model.train()
     return float(np.average(losses)) if losses else float("nan")
 
 
-def train(args) -> dict:
+def train(args, parser_defaults: dict | None = None) -> dict:
+    defaults = parser_defaults if parser_defaults is not None else \
+        _parser_defaults()
+    ignored = neutralise_coe(args, defaults)
     cfg, optim_cfg = build_config(args)
     torch.manual_seed(optim_cfg["seed"])
     np.random.seed(optim_cfg["seed"])
     random.seed(optim_cfg["seed"])
 
-    run_id = args.run_name or (
-        f"{args.dataset}_{cfg.seq_len}_{cfg.pred_len}_{cfg.variant}")
+    run_id = args.run_name or _run_id(args, cfg, defaults)
     run_dir = Path(args.out) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -252,17 +279,19 @@ def train(args) -> dict:
         "dataset": args.dataset, "freq": args.freq, "model": cfg.to_dict(),
         "optim": optim_cfg, "data_root": str(Path(args.data_root).resolve()),
     }
-    # BEFORE the datasets and the model: a clashing directory is the operator's
-    # to resolve, and finding that out after a 136 MB csv parse helps nobody.
-    _claim_run_dir(run_dir, run_config, args.overwrite)
+    # BEFORE the datasets and the model: clearing the previous run's results
+    # after a 136 MB csv parse helps nobody.
+    _claim_run_dir(run_dir, run_config)
+    if ignored:
+        logger.info("--refinement off: ignoring %s (a baseline has no chain "
+                    "to configure)", " ".join(ignored))
 
     device = args.device
-    # train and val only: run_eval builds the test split from the same file
-    # once the run finishes, and parsing Traffic's 136 MB csv a third time
-    # here would buy nothing the two splits above have not already checked.
-    splits = {flag: build_dataset(args.dataset, args.data_root, flag,
-                                  cfg.seq_len, cfg.pred_len, args.freq)
-              for flag in ("train", "val")}
+    # ONE read for both splits (run_eval reads the file again for the test
+    # split once training finishes; that one is a separate process's worth of
+    # work in the standalone case and is not worth threading through).
+    splits = build_splits(args.dataset, args.data_root, ("train", "val"),
+                          cfg.seq_len, cfg.pred_len, args.freq)
     loaders = {
         "train": build_loader(splits["train"], "train",
                               optim_cfg["batch_size"], args.loader_workers),
@@ -305,18 +334,19 @@ def train(args) -> dict:
         losses = []
         for batch in loaders["train"]:
             optimizer.zero_grad()
-            batch_x, batch_y, x_mark, y_mark = _batch_to_device(
+            batch_x, batch_y, x_mark, y_mark = batch_to_device(
                 batch, cfg, device)
+            # `enabled=False` makes autocast a no-op, so the loss has ONE
+            # call site and cannot drift between the AMP and fp32 paths.
+            with torch.autocast(device_type=device.split(":")[0],
+                                enabled=args.amp):
+                loss = _loss_for_batch(model, cfg, criterion, batch_x,
+                                       batch_y, x_mark, y_mark)
             if scaler is not None:
-                with torch.autocast(device_type=device.split(":")[0]):
-                    loss = _loss_for_batch(model, cfg, criterion, batch_x,
-                                           batch_y, x_mark, y_mark)
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
                 scaler.update()
             else:
-                loss = _loss_for_batch(model, cfg, criterion, batch_x,
-                                       batch_y, x_mark, y_mark)
                 loss.backward()
                 optimizer.step()
             losses.append(loss.item())
@@ -365,9 +395,6 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--out", default="./runs", help="run directories go here")
     p.add_argument("--run-name", default=None,
                    help="override the auto-generated run directory name")
-    p.add_argument("--overwrite", action="store_true",
-                   help="replace a run directory that holds a DIFFERENT "
-                        "configuration (refused by default)")
     # -- task --
     p.add_argument("--seq-len", type=int, default=96,
                    help="lookback. The paper's table is 96 throughout; "
@@ -439,11 +466,24 @@ def parse_args(argv=None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _parser_defaults() -> dict:
+    """What every optional argument defaults to, taken from the parser itself.
+
+    `_run_id` and `neutralise_coe` both ask "was this overridden", and this is
+    the one place that answers it — a hand-kept second copy of the defaults is
+    exactly what would drift. The three required arguments are given dummy
+    values; none of them is in `TUNABLES`.
+    """
+    return vars(parse_args(["--dataset", sorted(DATASETS)[0],
+                            "--pred-len", "96", "--data-root", "."]))
+
+
 def main() -> None:
     args = parse_args()
     logging.basicConfig(level=logging.INFO,
                         format="[%(asctime)s] %(message)s",
                         datefmt="%m-%d %H:%M:%S")
+    defaults = _parser_defaults()
     cap = limit_cpu(args.num_workers)
     # The cap is a budget for the PROCESS GROUP, not per pool. Loader workers
     # are processes of their own, so they are reserved out of the parent's
@@ -456,7 +496,7 @@ def main() -> None:
         if value is not None and value < 1:
             raise SystemExit(f"--{name.replace('_', '-')} must be >= 1 "
                              f"(got {value})")
-    train(args)
+    train(args, defaults)
 
 
 if __name__ == "__main__":

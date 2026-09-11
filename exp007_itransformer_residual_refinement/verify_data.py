@@ -15,7 +15,15 @@ import hashlib
 import sys
 from pathlib import Path
 
-from data import DATASETS, dataset_path
+# CPU cap BEFORE `data`, which imports numpy/pandas/torch: OpenMP and BLAS
+# size their pools at load time. See finar_cpu.py.
+sys.path.append(str(next(d for d in Path(__file__).resolve().parents
+                         if (d / "finar_cpu.py").is_file())))
+from finar_cpu import limit_cpu  # noqa: E402
+
+limit_cpu(quiet=True)
+
+from data import DATASETS, dataset_path  # noqa: E402
 
 
 def _sha256(path: Path, chunk: int = 1 << 22) -> str:
@@ -26,16 +34,14 @@ def _sha256(path: Path, chunk: int = 1 << 22) -> str:
     return h.hexdigest()
 
 
-def _shape(path: Path, has_header: bool, sep: str) -> tuple[int, int]:
+def _shape(path: Path, has_header: bool) -> tuple[int, int]:
     """`(data rows, value columns)` without loading the file into memory."""
     with open(path, "r", encoding="utf-8") as fh:
         first = fh.readline()
         if not first:
             return 0, 0
-        columns = len(first.rstrip("\n").split(sep))
-        rows = 0 if has_header else 1
-        for rows_seen, _ in enumerate(fh, start=rows + 1):
-            rows = rows_seen
+        columns = len(first.rstrip("\n").split(","))
+        rows = sum(1 for _ in fh) + (0 if has_header else 1)
     return rows, columns
 
 
@@ -49,7 +55,7 @@ def verify(data_root: str, names) -> int:
             worst = max(worst, 2)
             continue
         header = path.suffix == ".csv"
-        rows, columns = _shape(path, header, "," )
+        rows, columns = _shape(path, header)
         # The date column is not a variate; Solar's headerless file has none.
         variates = columns - 1 if header else columns
         problems = []
