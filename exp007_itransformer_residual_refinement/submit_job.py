@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -67,20 +68,31 @@ FORWARD = [
 
 
 def build_combined_cmd(args) -> str:
-    """The semicolon-separated command string ssub runs in the container."""
+    """The semicolon-separated command string ssub runs in the container.
+
+    Every word goes through `shlex.quote`, including the paths. Python's
+    `repr` is NOT shell quoting — it renders an apostrophe with a backslash,
+    which does not escape inside shell single quotes, so a path such as
+    `/scratch/O'Brien/runs` would be reparsed into something else entirely.
+    """
     train_sh = HERE / "train.sh"
+    q = shlex.quote
     parts = ["--mode local",
-             f"--dataset {args.dataset!r}",
-             f"--pred-len {args.pred_len!r}"]
+             f"--dataset {q(args.dataset)}",
+             f"--pred-len {q(str(args.pred_len))}"]
     for attr, flag in FORWARD:
         value = getattr(args, attr, None)
         if value is not None and value != "":
-            parts.append(f"{flag} {str(value)!r}")
+            parts.append(f"{flag} {q(str(value))}")
     if args.skip_precheck:
         parts.append("--skip-precheck")
+    if args.no_reference:
+        parts.append("--no-reference")
+    if args.overwrite:
+        parts.append("--overwrite")
     return "; ".join([
-        f"cd {HERE}",
-        f"bash {train_sh} " + " ".join(parts),
+        f"cd {q(str(HERE))}",
+        f"bash {q(str(train_sh))} " + " ".join(parts),
     ])
 
 
@@ -166,6 +178,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--reference", default=None,
                    help="official checkout for the in-container precheck")
     p.add_argument("--skip-precheck", action="store_true")
+    p.add_argument("--overwrite", action="store_true",
+                   help="replace run directories holding a different config")
+    p.add_argument("--no-reference", action="store_true",
+                   help="let the in-container precheck run without the "
+                        "official checkout (it refuses by default)")
     # ── compute ──
     p.add_argument("--gpu-type", default="A100",
                    choices=["A100", "H100", "2080ti"])

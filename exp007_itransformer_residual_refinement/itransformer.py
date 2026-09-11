@@ -375,6 +375,15 @@ class ITransformer(nn.Module):
             x_enc = x_enc / stdev
 
         B, _, N = x_enc.shape
+        if x_mark_enc is not None and x_mark_enc.shape[-1] != self.cfg.n_marks:
+            # The mark tokens are dropped by position (`[:, :, :N]`), so a
+            # count that disagrees with the config is silently absorbed by the
+            # projector's output slice instead of failing: a checkpoint trained
+            # at one --freq would keep scoring at another.
+            raise ValueError(
+                f"this model was built for n_marks={self.cfg.n_marks} but was "
+                f"given {x_mark_enc.shape[-1]} timestamp features — the "
+                f"--freq of the run does not match the checkpoint's")
         n_passes = self.resolve_depth(depth)
         marks = self._marks(x_mark_enc, y_mark_fut, B)
 

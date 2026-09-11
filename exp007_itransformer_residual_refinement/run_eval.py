@@ -53,6 +53,33 @@ def load_checkpoint(run_dir: str | Path, device: str = "cpu"):
     return model.to(device).eval(), cfg, meta
 
 
+#: Everything that must match before two runs may be compared. The variant
+#: (baseline vs a COE configuration) is deliberately NOT here — that is the
+#: thing under comparison; everything else is the protocol it has to share.
+PROTOCOL_FIELDS = ("dataset", "freq", "seq_len", "pred_len", "d_model", "d_ff",
+                   "e_layers", "n_heads", "dropout", "use_norm", "n_marks",
+                   "batch_size", "learning_rate", "train_epochs", "patience",
+                   "lradj", "seed", "data_root")
+
+
+def protocol_of(meta: dict, cfg: ModelConfig) -> dict:
+    """The fields a baseline and a refinement must agree on to be comparable.
+
+    Carried into `metrics.json` so `build_table.py` can refuse to credit a
+    refinement with a gain measured against a baseline trained under different
+    settings — a results directory accumulated over several sessions makes that
+    easy to do by accident, and the resulting number looks like a result.
+    """
+    source = {**meta, **meta.get("optim", {}), **cfg.to_dict()}
+    return {k: source[k] for k in PROTOCOL_FIELDS if k in source}
+
+
+def protocol_digest(protocol: dict) -> str:
+    import hashlib
+    blob = json.dumps(protocol, sort_keys=True, default=str).encode()
+    return hashlib.sha256(blob).hexdigest()[:12]
+
+
 def resolve_depths(cfg: ModelConfig, depths) -> list[int]:
     """Which chain depths to score.
 
@@ -148,10 +175,13 @@ def evaluate(run_dir: str | Path, data_root: str, device: str,
         # The published cell is the PAPER'S architecture. For a refined
         # checkpoint this comparison is informative, not a reproduction claim.
         detail += " [refined variant against the paper's baseline cell]"
+    protocol = protocol_of(meta, cfg)
     out = {
         "run": run_dir.name,
         "dataset": meta["dataset"],
         "variant": cfg.variant,
+        "protocol": protocol,
+        "protocol_digest": protocol_digest(protocol),
         "seq_len": cfg.seq_len,
         "pred_len": cfg.pred_len,
         "test_windows": len(dataset),
@@ -190,9 +220,10 @@ def main() -> None:
                    help="CPU cap for this run. Default: derived from the "
                         "scheduler affinity mask and the cgroup quota. A value "
                         "above the allocation is clamped, not obeyed.")
-    p.add_argument("--loader-workers", type=int, default=2,
-                   help="DataLoader worker processes, within the CPU cap "
-                        "(default: 2)")
+    p.add_argument("--loader-workers", type=int, default=0,
+                   help="DataLoader worker processes. Default 0: scoring is "
+                        "one pass over an in-memory array and a worker pool "
+                        "only adds IPC")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available()
                    else "cpu")
     args = p.parse_args()

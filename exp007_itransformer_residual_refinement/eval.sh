@@ -36,7 +36,8 @@
 #   --num-workers N     CPU cap. Default: read from the scheduler affinity mask
 #                       and the cgroup quota. Above the allocation it is
 #                       clamped, not obeyed.
-#   --loader-workers N  DataLoader processes, within that cap (default 2)
+#   --loader-workers N  DataLoader worker processes (default 0); scoring is a
+#                       single pass over an in-memory array
 #   --device cuda|cpu   default: cuda when available
 #   --stage eval|table|all      default: all
 #   --dry-run           print the commands without running them

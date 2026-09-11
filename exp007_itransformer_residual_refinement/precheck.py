@@ -27,11 +27,14 @@ Without a reference (only under an explicit `--no-reference`):
             R2 with the feedback slot's weights zeroed and no residual, the
             chain at ANY depth equals the baseline model exactly — the widened
             embedding is a pure superset, not a different architecture.
-            R3 with real weights, depth 2 differs from depth 1 and depth 3
-            from depth 2 — the forecast that is written back actually reaches
-            the model. This is the check that separates "the refinement did
-            not help" from "the refinement never ran".
-            R4 the same for the hidden-state chain.
+            R3 WITHOUT the residual, depth 2 differs from depth 1 and depth 3
+            from depth 2 — so the fed-back forecast reaches the ENCODER. Run
+            with the residual this proves nothing: `A_{i-1} + raw` differs
+            every pass even when the embedding ignores the feedback entirely.
+            R3b the residual accumulation is a real second mechanism on top.
+            R4 the same reachability test for the hidden-state chain.
+            R5 depth d read out of one deeper forward equals running the chain
+            to exactly d — what the whole depth sweep rests on.
   table     the paper's targets are present for every dataset x horizon.
 
 `--reproduce DATASET/PRED_LEN` additionally TRAINS that cell with the official
@@ -129,7 +132,7 @@ _BY_DATA_PATH = {
 def _parse_official_scripts(reference: Path) -> dict:
     """`{(dataset, pred_len): {flag: value}}` from the official shell scripts."""
     root = reference / "scripts" / "multivariate_forecasting"
-    runs = {}
+    runs, seen = {}, set()
     for script in sorted(root.rglob("iTransformer*.sh")):
         text = script.read_text()
         # Line continuations first: each `python -u run.py ...` invocation is
@@ -151,16 +154,45 @@ def _parse_official_scripts(reference: Path) -> dict:
                 i += 1
             name = _BY_DATA_PATH.get(flags.get("data_path", ""))
             if name and "pred_len" in flags:
-                runs[(name, int(flags["pred_len"]))] = flags
+                key = (name, int(flags["pred_len"]))
+                # A duplicate would overwrite the first silently, so a second
+                # invocation of the same cell with different settings could
+                # hide one of the two.
+                if key in seen:
+                    raise ValueError(
+                        f"{key[0]}/{key[1]} is invoked more than once under "
+                        f"{root}; this parser cannot say which one the paper "
+                        f"reports")
+                seen.add(key)
+                runs[key] = flags
     return runs
 
 
+#: The prediction lengths Table 10 reports for every dataset.
+HORIZONS = (96, 192, 336, 720)
+
+
 def check_hparams(reference: Path) -> Result:
-    runs = _parse_official_scripts(reference)
+    try:
+        runs = _parse_official_scripts(reference)
+    except ValueError as exc:
+        return Result("hparams", FAIL, str(exc))
     if not runs:
         return Result("hparams", FAIL,
                       f"no `python -u run.py` invocations found under "
                       f"{reference}/scripts/multivariate_forecasting")
+    # COVERAGE FIRST. Validating only the invocations that happened to parse
+    # lets a renamed script, an unrecognised --data_path or a missing horizon
+    # reduce this to "the four cells I found agree", which is a pass that means
+    # nothing. The expected set is every dataset in OFFICIAL x the paper's four
+    # horizons.
+    expected = {(name, h) for name in paper.OFFICIAL for h in HORIZONS}
+    missing = sorted(expected - set(runs))
+    if missing:
+        return Result("hparams", FAIL,
+                      f"{len(missing)} official invocation(s) not found under "
+                      f"{reference}/scripts/multivariate_forecasting: "
+                      + ", ".join(f"{n}/{h}" for n, h in missing[:8]))
     checked, bad = 0, []
     for (name, pred_len), flags in sorted(runs.items()):
         if name not in paper.OFFICIAL:
@@ -169,8 +201,12 @@ def check_hparams(reference: Path) -> Result:
         for key in ("seq_len", "e_layers", "d_model", "d_ff", "batch_size",
                     "learning_rate"):
             # Absent in the script means run.py's default, which is what
-            # paper.DEFAULTS holds.
-            got = float(flags[key]) if key in flags else float(want[key])
+            # paper.DEFAULTS holds. Falling back to `want[key]` instead — as
+            # this did — makes the comparison an identity for every flag the
+            # script does not pass, so a wrong OFFICIAL entry for one of those
+            # could never be detected.
+            got = float(flags[key]) if key in flags \
+                else float(paper.DEFAULTS[key])
             if abs(got - float(want[key])) > 1e-12:
                 bad.append(f"{name}/{pred_len} {key}: script {got:g}, "
                            f"paper.py {float(want[key]):g}")
@@ -235,6 +271,7 @@ def check_data(reference: Path, data_root: str, seq_len: int,
     }
     present = [n for n in sorted(DATASETS)
                if Path(dataset_path(data_root, n)).is_file()]
+    absent = sorted(set(DATASETS) - set(present))
     if not present:
         return Result("data", SKIP,
                       f"no dataset files under {data_root} — run "
@@ -280,6 +317,14 @@ def check_data(reference: Path, data_root: str, seq_len: int,
         notes.append(f"{name}({len(mine)} test windows)")
     if bad:
         return Result("data", FAIL, "; ".join(bad[:6]))
+    if absent:
+        # Not a PASS. "The loaders agree" over one downloaded dataset reads the
+        # same as over all nine, and the difference is the whole value of the
+        # check — so an incomplete corpus is reported as incomplete.
+        return Result("data", SKIP,
+                      f"checked {len(present)} of {len(DATASETS)} datasets; "
+                      f"not on disk: {', '.join(absent)}. Verified: "
+                      + ", ".join(notes))
     return Result("data", PASS, "splits and windows match: " + ", ".join(notes))
 
 
@@ -295,6 +340,18 @@ def _refine_cfg(**over) -> ModelConfig:
 
 
 def check_refinement(device: str) -> Result:
+    """Does the chain do what it claims, and does the feedback reach the model?
+
+    The order of these matters. "Successive forecasts differ" is NOT evidence
+    that the fed-back window reaches the encoder: under ``coe_residual`` the
+    reported forecast is ``A_{i-1} + raw_i``, so an embedding that ignores the
+    feedback entirely still emits r, 2r, 3r — every depth different, every pass
+    blind. Measured: zeroing ``value_embedding.weight[:, seq_len:]`` leaves the
+    per-pass delta at 0.456 under ``coe_residual=True`` and at exactly 0 under
+    ``coe_residual=False``. R3 therefore runs WITHOUT the residual, where
+    ``pred_i = raw_i = f([x ; pred_{i-1}])`` and a change can only come from
+    the encoder having read the previous forecast.
+    """
     torch.manual_seed(7)
     n_var, notes = 7, []
     x = torch.randn(3, 96, n_var, device=device)
@@ -340,24 +397,42 @@ def check_refinement(device: str) -> Result:
                       f"embedding changes more than the feedback")
     notes.append("R2 feedback slot is the only addition")
 
-    # R3 — and with real weights it MUST move. A refinement that silently does
-    # nothing reads exactly like a refinement that does not help.
+    # R3 — NO RESIDUAL, so a change between passes can only mean the encoder
+    # read the previous forecast. This is the check that separates "the
+    # refinement did not help" from "the refinement never ran".
     torch.manual_seed(17)
-    model = ITransformer(_refine_cfg()).to(device).eval()
+    reach = ITransformer(_refine_cfg(coe_residual=False)).to(device).eval()
     with torch.no_grad():
-        outs = model(x, xm, ym, depth=3, return_all_passes=True)
+        outs = reach(x, xm, ym, depth=3, return_all_passes=True)
     steps = [float((outs[i + 1] - outs[i]).abs().mean()) for i in range(2)]
     if min(steps) <= 0.0:
         return Result("refine", FAIL,
-                      f"R3: the chain does not move (mean |delta| per pass "
-                      f"{steps}) — the fed-back forecast never reaches the "
-                      f"model")
-    notes.append(f"R3 chain moves (mean |delta| {steps[0]:.3e}, {steps[1]:.3e})")
+                      f"R3: without the residual the chain does not move "
+                      f"(mean |delta| per pass {steps}) — the fed-back "
+                      f"forecast never reaches the encoder")
+    notes.append(f"R3 encoder reads the feedback ({steps[0]:.3e}, "
+                 f"{steps[1]:.3e})")
 
-    # R4 — the hidden-state ablation must also advance with depth.
+    # R3b — and the accumulation is a real second mechanism on top of it: with
+    # the same weights, depth 2 must differ between residual and non-residual.
     torch.manual_seed(19)
+    acc_on = ITransformer(_refine_cfg(coe_residual=True)).to(device).eval()
+    acc_off = ITransformer(_refine_cfg(coe_residual=False)).to(device).eval()
+    acc_off.load_state_dict(acc_on.state_dict())
+    with torch.no_grad():
+        gap = float((acc_on(x, xm, ym, depth=2)
+                     - acc_off(x, xm, ym, depth=2)).abs().mean())
+    if gap <= 0.0:
+        return Result("refine", FAIL,
+                      "R3b: coe_residual changes nothing at depth 2 — the "
+                      "accumulation A_{i-1} + delta is not being applied")
+    notes.append(f"R3b accumulation applies ({gap:.3e})")
+
+    # R4 — the hidden-state ablation must also advance with depth, and for the
+    # same reason it is tested without the residual.
+    torch.manual_seed(23)
     hidden = ITransformer(
-        _refine_cfg(coe_bottleneck=False)).to(device).eval()
+        _refine_cfg(coe_bottleneck=False, coe_residual=False)).to(device).eval()
     with torch.no_grad():
         houts = hidden(x, xm, ym, depth=3, return_all_passes=True)
     hsteps = [float((houts[i + 1] - houts[i]).abs().mean()) for i in range(2)]
@@ -365,6 +440,24 @@ def check_refinement(device: str) -> Result:
         return Result("refine", FAIL,
                       f"R4: the hidden-state chain does not move {hsteps}")
     notes.append(f"R4 hidden chain moves ({hsteps[0]:.3e}, {hsteps[1]:.3e})")
+
+    # R5 — the depth sweep reads every depth out of ONE forward. That is only
+    # valid if pass d of a deeper run is what a run stopping at d would have
+    # produced; `run_eval.test_metrics` depends on it for the whole curve.
+    for bottleneck in (True, False):
+        torch.manual_seed(29)
+        m = ITransformer(
+            _refine_cfg(coe_bottleneck=bottleneck)).to(device).eval()
+        with torch.no_grad():
+            swept = m(x, xm, ym, depth=4, return_all_passes=True)
+            exact = [m(x, xm, ym, depth=d) for d in (1, 2, 3, 4)]
+        off = max(float((swept[i] - exact[i]).abs().max()) for i in range(4))
+        if off != 0.0:
+            return Result("refine", FAIL,
+                          f"R5: bottleneck={bottleneck}, depth d read out of a "
+                          f"depth-4 forward differs by {off:.3e} from running "
+                          f"the chain to exactly d — the sweep is not the curve")
+    notes.append("R5 one forward == per-depth forwards")
     return Result("refine", PASS, "; ".join(notes))
 
 
@@ -396,11 +489,15 @@ def check_reproduce(spec: str, data_root: str, device: str, out: str,
                       f"--reproduce takes DATASET/PRED_LEN, e.g. ETTh1/96 "
                       f"(got {spec!r})")
     pred_len = int(horizon)
+    # Into an `out/precheck` SUBDIRECTORY, not beside the experiment's own
+    # runs: a reproduction is a baseline run in every respect, so dropped into
+    # the results root it becomes a second baseline for that cell and
+    # build_table has to refuse the comparison as ambiguous.
     args = train_mod.parse_args([
         "--dataset", name, "--pred-len", str(pred_len),
-        "--data-root", data_root, "--out", out, "--device", device,
-        "--run-name", f"precheck_{name}_{pred_len}",
-        "--loader-workers", str(workers),
+        "--data-root", data_root, "--out", str(Path(out) / "precheck"),
+        "--device", device, "--run-name", f"{name}_{pred_len}",
+        "--loader-workers", str(workers), "--overwrite",
     ])
     result = train_mod.train(args)
     want = paper.target(name, pred_len)
@@ -429,7 +526,8 @@ def main() -> None:
     p.add_argument("--out", default="./runs")
     p.add_argument("--num-workers", type=int, default=None,
                    help="CPU cap. Default: derived from the allocation.")
-    p.add_argument("--loader-workers", type=int, default=2)
+    p.add_argument("--loader-workers", type=int, default=0,
+                   help="DataLoader worker processes for --reproduce")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available()
                    else "cpu")
     args = p.parse_args()
@@ -480,9 +578,13 @@ def main() -> None:
         print(f"  FAILED: {', '.join(failed)}\n")
         sys.exit(1)
     if skipped and not args.no_reference:
-        print(f"  INCOMPLETE: {', '.join(skipped)} could not run. Pass "
-              f"--reference (prepare_data.sh --with-reference) or accept the "
-              f"gap explicitly with --no-reference.\n")
+        # The per-check detail above already says WHY each one is incomplete —
+        # a missing reference and a half-downloaded corpus are different gaps
+        # and naming only the first sent readers to the wrong fix.
+        print(f"  INCOMPLETE: {', '.join(skipped)} did not run in full; see "
+              f"the line(s) above for what is missing. `prepare_data.sh "
+              f"--with-reference` supplies both the datasets and the official "
+              f"checkout. --no-reference accepts the gap explicitly.\n")
         sys.exit(2)
     if skipped:
         print(f"  PASSED, WITH {len(skipped)} CHECK(S) NOT RUN: "

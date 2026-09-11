@@ -138,11 +138,24 @@
 #                       affinity mask and the cgroup quota, so a quota'd node
 #                       configures itself. A value above the allocation is
 #                       clamped, not obeyed.
-#   --loader-workers N  DataLoader processes, within that cap (default 2)
+#   --loader-workers N  DataLoader worker processes (default 0). The dataset
+#                       is an in-memory array, so workers add IPC and nothing
+#                       else — 0 measured fastest on both ETTh1 and Weather.
+#                       Any workers are reserved OUT of the parent's thread
+#                       pool: --num-workers is a budget for the process group,
+#                       not for one pool.
 #   --device cuda|cpu   default: cuda when available
+#   --overwrite         replace a run directory holding a DIFFERENT
+#                       configuration (refused by default, because the run id
+#                       does not separate two runs differing only in seed or an
+#                       optimizer override)
 #   --reference PATH    official checkout for the precheck
-#                       (default ./reference/iTransformer)
-#   --skip-precheck     train without checking first. Say why in the log.
+#                       (default ./reference/iTransformer). MISSING IT IS AN
+#                       ERROR: the baseline's agreement with the paper is the
+#                       premise of the whole comparison
+#   --no-reference      train anyway, with the official-model and data
+#                       comparisons NOT run. Explicit on purpose
+#   --skip-precheck     train without checking at all. Say why in the log.
 #   --mode local|job    run here, or submit via ssub (default local)
 #   --ngpu N / --gpu-type A100|H100|2080ti / --job-name S / --priority N /
 #   --exp-id N / --image S      job mode only
@@ -167,8 +180,8 @@ DATASETS=""; PRED_LENS="96"; SEQ_LEN="96"; OUT=""
 REFINEMENT="off"; TRAIN_DEPTH=""; DEPTH=""; EVAL_DEPTHS=""
 COE_RESIDUAL=""; COE_BOTTLENECK=""; COE_STOCHASTIC=""; COE_BACKPROP=""
 COE_INTERNAL=""; COE_FUTURE_MARKS=""
-EPOCHS=""; BATCH=""; LR=""; SEED=""; LOADER_WORKERS=""; DEVICE=""
-REFERENCE=""; SKIP_PRECHECK=""; MODE="local"; DRY=""
+EPOCHS=""; BATCH=""; LR=""; SEED=""; LOADER_WORKERS=""; DEVICE=""; OVERWRITE=""
+REFERENCE=""; SKIP_PRECHECK=""; NO_REFERENCE=""; MODE="local"; DRY=""
 NGPU="1"; GPU_TYPE="A100"; JOB_NAME=""; PRIORITY=""; EXP_ID=""; IMAGE=""
 
 while [[ $# -gt 0 ]]; do
@@ -195,8 +208,10 @@ while [[ $# -gt 0 ]]; do
         --num-workers)   THREADS="$2";       shift 2 ;;
         --loader-workers) LOADER_WORKERS="$2"; shift 2 ;;
         --device)        DEVICE="$2";        shift 2 ;;
+        --overwrite)     OVERWRITE="1";      shift ;;
         --reference)     REFERENCE="$2";     shift 2 ;;
-        --skip-precheck) SKIP_PRECHECK=1;    shift ;;
+        --no-reference)  NO_REFERENCE="1";   shift ;;
+        --skip-precheck) SKIP_PRECHECK="1";  shift ;;
         --mode)          MODE="$2";          shift 2 ;;
         --ngpu)          NGPU="$2";          shift 2 ;;
         --gpu-type)      GPU_TYPE="$2";      shift 2 ;;
@@ -263,6 +278,8 @@ if [[ "${MODE}" == "job" ]]; then
         ${LR:+--lr "${LR}"} ${SEED:+--seed "${SEED}"} \
         ${LOADER_WORKERS:+--loader-workers "${LOADER_WORKERS}"} \
         ${SKIP_PRECHECK:+--skip-precheck} \
+        ${NO_REFERENCE:+--no-reference} \
+        ${OVERWRITE:+--overwrite} \
         ${JOB_NAME:+--job-name "${JOB_NAME}"} \
         ${PRIORITY:+--priority "${PRIORITY}"} \
         ${EXP_ID:+--exp-id "${EXP_ID}"} ${IMAGE:+--image "${IMAGE}"} \
@@ -279,15 +296,45 @@ else
                    ${THREADS:+--num-workers "${THREADS}"})
     if [[ -d "${REFERENCE}" ]]; then
         PRECHECK_ARGS+=(--reference "${REFERENCE}")
-    else
-        note "no official checkout at ${REFERENCE}: the model and data comparisons cannot run. Get one with: bash prepare_data.sh --with-reference"
+        [[ -n "${NO_REFERENCE}" ]] && PRECHECK_ARGS+=(--no-reference)
+    elif [[ -n "${NO_REFERENCE}" ]]; then
+        note "--no-reference: training WITHOUT checking this model against the official one"
         PRECHECK_ARGS+=(--no-reference)
+    else
+        # Supplying --no-reference automatically here is what turned the
+        # precheck's refusal back into a pass: the launcher would quietly
+        # train and report with the baseline's agreement to the paper never
+        # checked. The gap has to be the operator's decision.
+        echo "no official checkout at ${REFERENCE}." >&2
+        echo "The baseline reproducing the paper is the premise of this" >&2
+        echo "experiment, so it is checked, not assumed. Either:" >&2
+        echo "  bash prepare_data.sh --with-reference   # get the checkout" >&2
+        echo "  bash train.sh ... --reference PATH      # point at one" >&2
+        echo "  bash train.sh ... --no-reference        # accept the gap" >&2
+        exit 2
     fi
     ${DRY} "${PY}" "${HERE}/precheck.py" "${PRECHECK_ARGS[@]}"
 fi
 
 # ---- train ----------------------------------------------------------------
 mkdir -p "${OUT}"
+# The COE flags describe a chain a baseline model does not have, and train.py
+# REFUSES coe_train_depth_max/coe_eval_depth > 1 without it (silently clamping
+# would mean the "depth 3" run was depth 1). So the documented
+# `for R in off on` loop, which passes the same flags to both arms, would fail
+# on the baseline. Dropping them here — out loud — is what makes that loop the
+# single-variable comparison it is written as.
+if [[ "${REFINE}" != "true" ]]; then
+    DROPPED=""
+    for PAIR in "--train-depth:${TRAIN_DEPTH}" "--depth:${DEPTH}"                 "--eval-depths:${EVAL_DEPTHS}" "--coe-residual:${COE_RESIDUAL}"                 "--coe-bottleneck:${COE_BOTTLENECK}"                 "--coe-stochastic-repeat:${COE_STOCHASTIC}"                 "--coe-backprop:${COE_BACKPROP}"                 "--coe-internal-loss:${COE_INTERNAL}"                 "--coe-future-marks:${COE_FUTURE_MARKS}"; do
+        [[ -n "${PAIR#*:}" ]] && DROPPED="${DROPPED} ${PAIR%%:*}"
+    done
+    [[ -n "${DROPPED}" ]] && note "--refinement off: ignoring${DROPPED} (a baseline has no chain to configure)"
+    TRAIN_DEPTH=""; DEPTH=""; EVAL_DEPTHS=""; COE_RESIDUAL=""
+    COE_BOTTLENECK=""; COE_STOCHASTIC=""; COE_BACKPROP=""
+    COE_INTERNAL=""; COE_FUTURE_MARKS=""
+fi
+
 for DS in ${DATASETS}; do
     for H in ${PRED_LENS}; do
         note "=== ${DS} / pred_len ${H} / refinement ${REFINE}"
@@ -309,6 +356,7 @@ for DS in ${DATASETS}; do
             ${LR:+--learning-rate "${LR}"} ${SEED:+--seed "${SEED}"} \
             ${LOADER_WORKERS:+--loader-workers "${LOADER_WORKERS}"} \
             ${DEVICE:+--device "${DEVICE}"} \
+            ${OVERWRITE:+--overwrite} \
             || note "FAILED: ${DS}/${H} (continuing with the rest)"
     done
 done

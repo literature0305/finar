@@ -28,7 +28,7 @@ import paper  # noqa: E402
 logger = logging.getLogger("finar_exp007")
 
 FIELDS = ("dataset", "pred_len", "variant", "depth", "headline", "mse",
-          "mae", "paper_mse", "paper_mae", "verdict", "run")
+          "mae", "paper_mse", "paper_mae", "verdict", "protocol", "run")
 
 
 def collect(root: Path) -> list[dict]:
@@ -40,6 +40,10 @@ def collect(root: Path) -> list[dict]:
             rows.append({
                 "dataset": m["dataset"], "pred_len": m["pred_len"],
                 "variant": m["variant"], "depth": int(depth),
+                # Two runs may only be compared when these agree; see
+                # run_eval.PROTOCOL_FIELDS.
+                "protocol": m.get("protocol_digest", ""),
+                "_protocol": m.get("protocol", {}),
                 "mse": round(score["mse"], 6), "mae": round(score["mae"], 6),
                 "paper_mse": want[0], "paper_mae": want[1],
                 # The verdict belongs to the run's HEADLINE depth — the one
@@ -60,58 +64,101 @@ def collect(root: Path) -> list[dict]:
 def compare(rows: list[dict]) -> list[dict]:
     """Baseline vs each refinement variant, per (dataset, horizon).
 
-    TWO gains are reported, because they answer different questions and only
-    one of them is a result:
+    A pair is only formed when the two runs share a PROTOCOL — lookback, seed,
+    optimizer settings, model dimensions, data root (`run_eval.PROTOCOL_FIELDS`).
+    Flipping `--refinement` changes none of those, so a legitimate pair always
+    matches; what does not match is a refinement measured against a baseline
+    from another session with a different seed or learning rate, and that
+    comparison is REFUSED rather than footnoted, because its gain is not a gain.
+
+    TWO gains are reported for a matched pair, because they answer different
+    questions and only one of them is a result:
 
       `improvement_pct` — at the depth the checkpoint is CONFIGURED to run.
         This is the honest number: the depth was chosen before the test split
         was scored.
       `improvement_pct_best_depth` — at whichever swept depth scored best.
         That is selection on the test set, so it is an upper bound on what
-        picking a depth could buy, not a score. It is reported because a gain
-        that exists at only one depth should be visible as such, and labelled
-        so it cannot be quoted as the result.
+        picking a depth could buy, not a score.
     """
-    headline, best_at = {}, {}
+    # LISTS, not last-one-wins. Two runs with the same key are two runs; a dict
+    # would keep whichever `collect` happened to read last and report it as
+    # "the" baseline, which is the silent-selection failure this function
+    # exists to avoid.
+    headline: dict = {}
+    best_at: dict = {}
     for r in rows:
-        key = (r["dataset"], r["pred_len"], r["variant"])
+        key = (r["dataset"], r["pred_len"], r["variant"], r["protocol"])
         if r.get("headline"):
-            headline[key] = r
+            headline.setdefault(key, []).append(r)
         if key not in best_at or r["mse"] < best_at[key]["mse"]:
             best_at[key] = r
+    baselines: dict = {}
+    for key, group in headline.items():
+        if key[2] == "baseline":
+            baselines.setdefault((key[0], key[1]), []).extend(group)
+
     out = []
     for key in sorted(headline):
-        dataset, horizon, variant = key
+        dataset, horizon, variant, digest = key
         if variant == "baseline":
             continue
-        row, best = headline[key], best_at[key]
-        base = headline.get((dataset, horizon, "baseline"))
-        if base is None:
-            out.append({"dataset": dataset, "pred_len": horizon,
-                        "variant": variant, "baseline_mse": None,
-                        "refined_mse": row["mse"], "improvement_pct": None,
-                        "eval_depth": row["depth"],
-                        "refined_mse_best_depth": best["mse"],
-                        "improvement_pct_best_depth": None,
-                        "best_depth": best["depth"],
-                        "note": "no baseline run to compare against"})
+        group, best = headline[key], best_at[key]
+        if len(group) > 1:
+            out.append({
+                "dataset": dataset, "pred_len": horizon, "variant": variant,
+                "protocol": digest, "baseline_mse": None,
+                "refined_mse": None, "improvement_pct": None,
+                "eval_depth": None, "refined_mse_best_depth": None,
+                "improvement_pct_best_depth": None, "best_depth": None,
+                "note": f"{len(group)} runs of this variant share a protocol "
+                        f"({', '.join(sorted(r['run'] for r in group))}) — "
+                        f"ambiguous, not compared"})
             continue
-        gain = 100.0 * (base["mse"] - row["mse"]) / base["mse"]
-        gain_best = 100.0 * (base["mse"] - best["mse"]) / base["mse"]
-        note = ""
-        if base["verdict"] == "miss":
-            note = ("the baseline missed its published cell — read the gain "
-                    "as relative to THIS baseline, not to the paper's")
-        out.append({
+        row = group[0]
+        pool = baselines.get((dataset, horizon), [])
+        matched = [b for b in pool if b["protocol"] == digest]
+        record = {
             "dataset": dataset, "pred_len": horizon, "variant": variant,
-            "baseline_mse": round(base["mse"], 6),
-            "refined_mse": round(row["mse"], 6),
-            "improvement_pct": round(gain, 3),
-            "eval_depth": row["depth"],
-            "refined_mse_best_depth": round(best["mse"], 6),
-            "improvement_pct_best_depth": round(gain_best, 3),
-            "best_depth": best["depth"], "note": note,
-        })
+            "protocol": digest, "baseline_mse": None, "refined_mse": row["mse"],
+            "improvement_pct": None, "eval_depth": row["depth"],
+            "refined_mse_best_depth": best["mse"],
+            "improvement_pct_best_depth": None, "best_depth": best["depth"],
+            "note": "",
+        }
+        if len(matched) > 1:
+            record["note"] = (
+                f"{len(matched)} baseline runs share this protocol "
+                f"({', '.join(sorted(b['run'] for b in matched))}) — "
+                f"ambiguous, not compared")
+            out.append(record)
+            continue
+        if not matched:
+            differs = ""
+            if pool:
+                other = pool[0].get("_protocol", {})
+                mine = row.get("_protocol", {})
+                fields = sorted(k for k in set(other) | set(mine)
+                                if other.get(k) != mine.get(k))
+                differs = (f" (nearest, {pool[0]['run']}, differs in "
+                           f"{', '.join(fields)})" if fields else "")
+            record["note"] = ("no baseline run shares this run's protocol"
+                              + differs + " — not compared")
+            out.append(record)
+            continue
+        base = matched[0]
+        record["baseline_mse"] = round(base["mse"], 6)
+        record["refined_mse"] = round(row["mse"], 6)
+        record["refined_mse_best_depth"] = round(best["mse"], 6)
+        record["improvement_pct"] = round(
+            100.0 * (base["mse"] - row["mse"]) / base["mse"], 3)
+        record["improvement_pct_best_depth"] = round(
+            100.0 * (base["mse"] - best["mse"]) / base["mse"], 3)
+        if base["verdict"] == "miss":
+            record["note"] = (
+                "the baseline missed its published cell — read the gain as "
+                "relative to THIS baseline, not to the paper's")
+        out.append(record)
     return out
 
 
@@ -137,8 +184,14 @@ def figure(rows: list[dict], comparisons: list[dict], path: Path) -> bool:
     ncols = 2 if sweeps else 1
     fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 4.5), squeeze=False)
     ax = axes[0][0]
+    # Only the pairs that were actually formed; an uncomparable row has no
+    # gain, and plotting it as 0 would read as "no effect".
+    comparisons = [c for c in comparisons if c["improvement_pct"] is not None]
+    if not comparisons:
+        logger.info("no comparable baseline/refinement pair — no figure")
+        return False
     labels = [f"{c['dataset']}\n{c['pred_len']}" for c in comparisons]
-    gains = [c["improvement_pct"] or 0.0 for c in comparisons]
+    gains = [c["improvement_pct"] for c in comparisons]
     colors = ["#2b7a3d" if g > 0 else "#a33" for g in gains]
     ax.bar(range(len(gains)), gains, color=colors)
     ax.axhline(0, color="black", linewidth=0.8)
@@ -182,7 +235,7 @@ def main() -> None:
         return
     table = root / "exp007_table.csv"
     with open(table, "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=FIELDS)
+        writer = csv.DictWriter(fh, fieldnames=FIELDS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
     logger.info("%d row(s) -> %s", len(rows), table)
@@ -191,7 +244,8 @@ def main() -> None:
     if comparisons:
         path = root / "exp007_improvement.csv"
         with open(path, "w", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=list(comparisons[0]))
+            writer = csv.DictWriter(fh, fieldnames=list(comparisons[0]),
+                                    extrasaction="ignore")
             writer.writeheader()
             writer.writerows(comparisons)
         logger.info("%d comparison(s) -> %s", len(comparisons), path)

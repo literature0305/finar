@@ -19,9 +19,14 @@ as a MISS, not rounded into agreement.
 
 from __future__ import annotations
 
-#: `run.py`'s argparse defaults, for everything the scripts do not set.
+#: `run.py`'s argparse defaults, for everything the scripts do not set. The
+#: model-shape entries are here as well as in `OFFICIAL` on purpose: a flag a
+#: script does not pass takes THIS value, and `precheck.check_hparams` needs
+#: something independent of `OFFICIAL` to compare such a flag against — against
+#: `OFFICIAL` itself the comparison would be an identity and could never fail.
 DEFAULTS = dict(
     seq_len=96, n_heads=8, dropout=0.1, activation="gelu", use_norm=True,
+    e_layers=2, d_model=512, d_ff=2048,
     batch_size=32, learning_rate=1e-4, train_epochs=10, patience=3,
     lradj="type1", loss="MSE", seed=2023, freq="h", features="M",
 )

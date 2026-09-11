@@ -100,6 +100,65 @@ class EarlyStopping:
             self.stop = True
 
 
+#: Written by a finished run and read back as its result. All of it has to go
+#: before a rerun starts, or a crash leaves the PREVIOUS run's numbers in place
+#: for `run_eval.py` and `build_table.py` to pick up as this one's.
+RUN_ARTIFACTS = ("checkpoint.pt", "metrics.json", "train_log.json")
+
+
+def _differing_keys(old: dict, new: dict, prefix: str = "") -> list[str]:
+    """Dotted names of the fields that differ. A bare "optim differ" is not
+    something an operator can act on — they need to see "optim.seed"."""
+    out = []
+    for key in sorted(set(old) | set(new)):
+        a, b = old.get(key), new.get(key)
+        if a == b:
+            continue
+        name = f"{prefix}{key}"
+        if isinstance(a, dict) and isinstance(b, dict):
+            out += _differing_keys(a, b, f"{name}.")
+        else:
+            out.append(name)
+    return out
+
+
+def _claim_run_dir(run_dir: Path, config: dict, overwrite: bool) -> None:
+    """Take ownership of a run directory, or refuse it.
+
+    The run id is built from dataset, lengths and variant, which does NOT
+    separate two runs differing only in seed, backprop mode, learning rate or
+    any other override — they would share a directory. Silently reusing it is
+    how a rerun ends up reporting the previous checkpoint: `config.json` is
+    rewritten, the old `checkpoint.pt` survives, and an early failure leaves
+    the two describing different models.
+
+    So: a directory whose config differs is refused unless `--overwrite`, and
+    every result artifact is deleted before training either way.
+    """
+    existing = run_dir / "config.json"
+    if existing.is_file() and not overwrite:
+        try:
+            old = json.loads(existing.read_text())
+        except json.JSONDecodeError:
+            old = None
+        if old is not None:
+            # Derived from the config, written after the model is built, and
+            # absent from the dict this compares — leaving it in would make
+            # every rerun of an IDENTICAL config look like a clash.
+            old.pop("parameters", None)
+        if old is not None and old != config:
+            differing = _differing_keys(old, config)
+            raise SystemExit(
+                f"{run_dir} already holds a run with a different "
+                f"configuration ({', '.join(differing)} differ). Its id does "
+                f"not distinguish the two, so continuing would mix them. Pass "
+                f"--run-name for a separate directory, or --overwrite to "
+                f"replace what is there.")
+    for name in RUN_ARTIFACTS:
+        (run_dir / name).unlink(missing_ok=True)
+    existing.write_text(json.dumps(config, indent=2))
+
+
 def build_config(args) -> tuple[ModelConfig, dict]:
     """Resolve the model config: official defaults, then explicit overrides."""
     official = paper.hparams(args.dataset, args.pred_len)
@@ -189,6 +248,14 @@ def train(args) -> dict:
     run_dir = Path(args.out) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    run_config = {
+        "dataset": args.dataset, "freq": args.freq, "model": cfg.to_dict(),
+        "optim": optim_cfg, "data_root": str(Path(args.data_root).resolve()),
+    }
+    # BEFORE the datasets and the model: a clashing directory is the operator's
+    # to resolve, and finding that out after a 136 MB csv parse helps nobody.
+    _claim_run_dir(run_dir, run_config, args.overwrite)
+
     device = args.device
     # train and val only: run_eval builds the test split from the same file
     # once the run finishes, and parsing Traffic's 136 MB csv a third time
@@ -199,8 +266,12 @@ def train(args) -> dict:
     loaders = {
         "train": build_loader(splits["train"], "train",
                               optim_cfg["batch_size"], args.loader_workers),
-        "val": build_loader(splits["val"], "val", optim_cfg["batch_size"],
-                            args.loader_workers),
+        # ZERO workers, deliberately. With persistent_workers both pools stay
+        # alive once validation starts, so the process group would hold the
+        # parent's own threads plus TWO worker pools — more CPU than the cap
+        # allows. Validation is one pass over an in-memory array; the parent
+        # does it directly and only one pool ever exists.
+        "val": build_loader(splits["val"], "val", optim_cfg["batch_size"], 0),
     }
     model = ITransformer(cfg).to(device)
     logger.info("run %s — %s", run_id, cfg.variant)
@@ -217,11 +288,8 @@ def train(args) -> dict:
                     cfg.coe_stochastic_repeat, cfg.coe_backprop,
                     cfg.coe_internal_loss)
 
-    (run_dir / "config.json").write_text(json.dumps({
-        "dataset": args.dataset, "freq": args.freq, "model": cfg.to_dict(),
-        "optim": optim_cfg, "data_root": str(Path(args.data_root).resolve()),
-        "parameters": count_parameters(model),
-    }, indent=2))
+    run_config["parameters"] = count_parameters(model)
+    (run_dir / "config.json").write_text(json.dumps(run_config, indent=2))
 
     optimizer = torch.optim.Adam(model.parameters(),
                                  lr=optim_cfg["learning_rate"])
@@ -281,9 +349,10 @@ def train(args) -> dict:
     del loaders, model
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
+    # Same reason as the validation loader: the training pool is gone by now,
+    # but scoring is a single pass and does not need a second one.
     return run_eval.evaluate(run_dir, args.data_root, device,
-                             args.eval_batch_size, args.loader_workers,
-                             args.eval_depths)
+                             args.eval_batch_size, 0, args.eval_depths)
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -296,6 +365,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--out", default="./runs", help="run directories go here")
     p.add_argument("--run-name", default=None,
                    help="override the auto-generated run directory name")
+    p.add_argument("--overwrite", action="store_true",
+                   help="replace a run directory that holds a DIFFERENT "
+                        "configuration (refused by default)")
     # -- task --
     p.add_argument("--seq-len", type=int, default=96,
                    help="lookback. The paper's table is 96 throughout; "
@@ -351,8 +423,14 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="CPU cap for this run. Default: derived from the "
                         "scheduler affinity mask and the cgroup quota. A value "
                         "above the allocation is clamped, not obeyed.")
-    p.add_argument("--loader-workers", type=int, default=2,
-                   help="DataLoader worker processes, within the CPU cap")
+    p.add_argument("--loader-workers", type=int, default=0,
+                   help="DataLoader worker PROCESSES. Default 0 — the "
+                        "dataset is an in-memory numpy array, so a worker "
+                        "adds IPC and nothing else: measured 1.5-2.0 s/epoch "
+                        "at 0 against 2.8-3.4 s at 2 on ETTh1, and 9 s "
+                        "against 13 s on Weather. Workers are also reserved "
+                        "out of the parent's thread pool, because the CPU cap "
+                        "is a budget for the process group.")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available()
                    else "cpu")
     p.add_argument("--eval-batch-size", type=int, default=32)
@@ -367,7 +445,17 @@ def main() -> None:
                         format="[%(asctime)s] %(message)s",
                         datefmt="%m-%d %H:%M:%S")
     cap = limit_cpu(args.num_workers)
-    args.loader_workers = max(0, min(args.loader_workers, cap))
+    # The cap is a budget for the PROCESS GROUP, not per pool. Loader workers
+    # are processes of their own, so they are reserved out of the parent's
+    # thread pool rather than added on top of it.
+    args.loader_workers = max(0, min(args.loader_workers, cap - 1))
+    if args.loader_workers:
+        limit_cpu(cap - args.loader_workers)
+    for name in ("epochs", "batch_size", "patience"):
+        value = getattr(args, name)
+        if value is not None and value < 1:
+            raise SystemExit(f"--{name.replace('_', '-')} must be >= 1 "
+                             f"(got {value})")
     train(args)
 
 

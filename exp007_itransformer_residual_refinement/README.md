@@ -46,11 +46,21 @@ encoder in hidden space ($h_i = \mathrm{enc}(h_{i-1}) + h_{i-1}$ under
 ## A.3 "No improvement" and "never ran" look identical
 
 The recurring failure in exp002, exp004 and exp005 was a manipulation that
-never reached the model, producing a plausible null. The third refinement check
-exists for exactly that: with real weights, depth 2 **must** differ from depth
-1 and depth 3 from depth 2, and the precheck fails if the chain does not move.
-Injecting a dead feedback path (multiplying the fed-back window by zero) is
-caught by that check and by nothing else.
+never reached the model, producing a plausible null. R3 exists for exactly
+that — and it has to be run **without** the residual to mean anything.
+
+With `coe_residual=true` the reported forecast is $A_{i-1} + \mathrm{raw}_i$,
+so an embedding that ignores the fed-back window entirely still emits
+$r, 2r, 3r$: every depth different, every pass blind. Measured, with
+`value_embedding.weight[:, 96:]` zeroed, the per-pass change is 0.456 under
+`coe_residual=true` and exactly 0 under `coe_residual=false`. So R3 runs the
+chain with the residual off, where $\mathrm{pred}_i = f([x\,;\,\mathrm{pred}_{i-1}])$
+and a change can only come from the encoder having read the previous forecast.
+R3b then checks separately that the accumulation is a real second mechanism on
+top of it.
+
+This was a codex review finding, not a designed-in check; the first version
+used the residual and would have passed on a dead feedback path.
 
 ## A.4 The baseline reproduces the paper
 
@@ -62,11 +72,15 @@ Against a `thuml/iTransformer` checkout it asserts, before training:
 | `hparams` | `paper.py`'s per-cell settings are what the 36 official `scripts/multivariate_forecasting/*` invocations pass |
 | `model` | the official `Model` and this `ITransformer` accept the same `state_dict` and return **bit-identical** forecasts |
 | `data` | every split's window count, and its first/middle/last window, match the official loader — all nine datasets |
-| `refine` | the four invariants of A.2/A.3 |
+| `refine` | R1/R2 of A.2, R3/R3b of A.3, R4 the same reachability test for the hidden chain, R5 that depth *d* read out of one deeper forward equals running the chain to exactly *d* — what the whole depth sweep rests on |
 | `table` | a published target exists for every dataset × horizon |
 
-Without `--reference` those three comparisons cannot run and the precheck exits
-non-zero unless `--no-reference` is passed explicitly.
+Each one refuses to pass vacuously. `hparams` compares the parsed set against
+all 36 expected cells before checking any of them, so a renamed script reduces
+it to a failure rather than to "the cells I found agree". `data` reports SKIP,
+not PASS, when only some datasets are on disk. And without `--reference` the
+model and data comparisons cannot run at all: the precheck exits non-zero, and
+so does `train.sh`, unless `--no-reference` is passed explicitly.
 
 Measured, at lookback 96 and `pred_len` 96, with the official settings and a
 single seed (RTX 5070, torch 2.11):
@@ -102,7 +116,7 @@ when `PYTHON` is unset; `requirements.txt` is there to drop even that.
 ## A.6 Usage
 
 ```bash
-bash prepare_data.sh --with-reference          # once: the data and the checkout
+bash prepare_data.sh --with-reference   # once: the data AND the official checkout
 
 # scenario A — the paper's model
 bash train.sh --dataset ETTh1 --pred-len 96 --refinement off
@@ -131,6 +145,16 @@ depth 4.
 `improvement_pct_best_depth` at whichever swept depth scored best, which is
 selection on the test set and is labelled as an upper bound. When a baseline
 misses its published cell, every row against it says so.
+
+A pair is only formed when the two runs share a **protocol** — lookback, seed,
+optimizer settings, model dimensions, data root (`run_eval.PROTOCOL_FIELDS`).
+Flipping `--refinement` changes none of those, so a legitimate pair always
+matches; a refinement measured against a baseline from another session with a
+different seed is refused and named, rather than reported with a footnote. For
+the same reason `train.py` refuses to reuse a run directory whose stored config
+differs (the run id does not separate two runs differing only in a seed), and
+deletes the previous `checkpoint.pt` / `metrics.json` before training so a
+failed rerun cannot leave the old numbers behind.
 
 ## A.8 What is deliberately not ported
 

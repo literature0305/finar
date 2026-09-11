@@ -72,7 +72,10 @@ SAMPLE = {"--alpha": "0 1", "--scenarios": "full", "--benchmarks": "fev",
 #: a `mkdir -p "${OUT}"` happens for real.
 CHECK_DIR = "/tmp/finar-check-launchers"
 INVOCATION = {
-    "train.sh": (f"--dataset ETTh1 --out {CHECK_DIR}", (None,)),
+    # --no-reference because train.sh REFUSES to run without the official
+    # iTransformer checkout, which is gitignored and absent from a fresh
+    # clone; this check is about argument plumbing, not about that gate.
+    "train.sh": (f"--dataset ETTh1 --out {CHECK_DIR} --no-reference", (None,)),
     "eval.sh": (f"--out {CHECK_DIR}", ("eval", "table", "all")),
     # --verify-only, or the check would download 420 MB of datasets.
     "prepare_data.sh": (f"--verify-only --data-root {CHECK_DIR}", (None,)),
