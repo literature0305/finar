@@ -45,6 +45,8 @@
 #   tail -f exp004.log
 #
 # Re-running is safe: a (benchmark, alpha) whose results.csv exists is skipped.
+# A REFUSED arm leaves results.REFUSED.csv instead, so it is re-evaluated on the
+# next run rather than skipped, and the table never sees it.
 # A re-run with a different checkpoint, depth, fev subset or task slice into the
 # same --out is REFUSED rather than silently mixing arms — manifest.json records
 # what the directory was built from.

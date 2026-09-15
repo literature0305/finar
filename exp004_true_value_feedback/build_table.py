@@ -257,6 +257,37 @@ def alpha_iteration_heatmaps(t: pd.DataFrame, dest: Path) -> None:
     plt.close(fig)
 
 
+def was_refused(adir: Path, alpha: float) -> str | None:
+    """Why `run_eval.py` refused this arm, or None.
+
+    Read from `truth.json` rather than trusted to the file layout. A refused
+    arm now writes `results.REFUSED.csv`, which `load` never looks at — but a
+    results directory written before that change has the refused arm's numbers
+    sitting in `results.csv`, and publishing those is exactly what the refusal
+    was for. The verdict is DERIVED from the recorded counts when the file
+    predates the `refused` field, so old directories are covered too.
+    """
+    truth = adir / "truth.json"
+    if not truth.is_file():
+        return None
+    try:
+        t = json.loads(truth.read_text())
+    except json.JSONDecodeError:
+        return None
+    if "refused" in t:
+        return t["refused"]
+    if alpha <= 0:
+        return None
+    hits, misses = t.get("truth_hits", 0), t.get("truth_misses", 0)
+    amb = t.get("ambiguous_fingerprints", 0)
+    if hits == 0:
+        return f"the truth never reached the model ({misses} misses)"
+    if misses or amb:
+        return (f"the truth reached only {hits}/{hits + misses} rows "
+                f"({misses} misses, {amb} ambiguous fingerprints)")
+    return None
+
+
 def load(root: Path) -> dict[str, dict[float, pd.DataFrame]]:
     """``{benchmark: {alpha: frame}}`` for everything present under root."""
     out: dict[str, dict[float, pd.DataFrame]] = {}
@@ -266,9 +297,16 @@ def load(root: Path) -> dict[str, dict[float, pd.DataFrame]]:
             m = _ALPHA_RE.match(adir.name)
             csv = adir / "results.csv"
             if m and csv.is_file():
+                alpha = float(m.group(1))
+                reason = was_refused(adir, alpha)
+                if reason is not None:
+                    logger.warning(
+                        "EXCLUDING %s/%s — run_eval refused this arm: %s",
+                        bench_dir.name, adir.name, reason)
+                    continue
                 d = pd.read_csv(csv)
                 d["_k"] = join_key(d, f"{bench_dir.name}/{adir.name}")
-                runs[float(m.group(1))] = d.set_index("_k")
+                runs[alpha] = d.set_index("_k")
         if runs:
             out[bench_dir.name] = runs
     return out

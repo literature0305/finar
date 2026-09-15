@@ -219,6 +219,43 @@ def make_adapter(benchmark: str, args):
     raise SystemExit(f"unknown benchmark {benchmark!r}; known: {BENCHMARKS}")
 
 
+def refusal_reason(benchmark, tag, alpha, store, dest) -> "str | None":
+    """Why this arm may not be published, or None.
+
+    The two conditions are unchanged; what changed is their SCOPE. They used to
+    `raise SystemExit` from inside the alpha loop, so one arm's data-quality
+    problem aborted the whole sweep: `--alpha "0.0 0.125 0.025 ..."` ran
+    alpha=0 (exempt — `alpha > 0` is false), ran alpha=0.125, and exited before
+    the remaining seven ever started. A per-arm verdict belongs to that arm;
+    the caller collects them and fails at the end, after doing the work.
+    """
+    if alpha <= 0:
+        return None
+    if store.n_hits == 0:
+        return (f"{benchmark}/{tag}: the truth never reached the model "
+                f"({store.n_misses} misses). The capture seam did not fire — "
+                f"this arm is a stock run wearing an alpha label.")
+    if store.n_misses or store.n_ambiguous:
+        # PARTIAL coverage is the failure the hits==0 check cannot see, and it
+        # is worse than total failure because it still produces a number. Rows
+        # that miss get ordinary model feedback while the rest get the truth,
+        # so the arm is a blend of two treatments reported as one — and it
+        # looks entirely normal.
+        #
+        # Ambiguity is the likely source at scale: two identical contexts with
+        # different futures cannot be told apart, so `TruthStore.add_fp` drops
+        # the fingerprint rather than guess, and constant or all-missing series
+        # make that collision common.
+        return (f"{benchmark}/{tag}: the truth reached only "
+                f"{store.n_hits}/{store.n_hits + store.n_misses} rows "
+                f"({store.n_misses} misses, {store.n_ambiguous} ambiguous "
+                f"fingerprints). A partially treated arm mixes true-value "
+                f"feedback with ordinary feedback and reports the mixture as "
+                f"one number, so it is refused rather than published. Counts "
+                f"are in {dest / 'truth.json'}.")
+    return None
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__.split("\n")[0],
@@ -300,12 +337,17 @@ def main() -> int:
     else:
         manifest.write_text(json.dumps(want, indent=1, default=str))
 
+    refused: list[str] = []
     for benchmark in args.benchmarks:
         for alpha in args.alpha:
             tag = f"alpha{alpha:g}"
             dest = args.out / benchmark / tag
             csv = dest / "results.csv"
             if csv.is_file():
+                # Only a PUBLISHED arm is skipped. A refused one wrote
+                # results.REFUSED.csv, so it lands here again and is scored
+                # afresh — which is what a re-run after fixing the capture
+                # should do.
                 logger.info("SKIP %s/%s — already scored", benchmark, tag)
                 continue
             dest.mkdir(parents=True, exist_ok=True)
@@ -333,39 +375,28 @@ def main() -> int:
             with capture, truth_feedback(forecaster._pipeline, alpha, store):
                 df = adapter.evaluate(forecaster, output_dir=str(dest),
                                       benchmark_name=name)
-            df.to_csv(csv, index=False)
+            reason = refusal_reason(benchmark, tag, alpha, store, dest)
             (dest / "truth.json").write_text(json.dumps(
                 {"alpha": alpha, "capture_skipped": alpha == 0.0,
                  "truth_hits": store.n_hits, "truth_misses": store.n_misses,
-                 "ambiguous_fingerprints": store.n_ambiguous}, indent=1))
-            if alpha > 0 and store.n_hits == 0:
-                raise SystemExit(
-                    f"{benchmark}/{tag}: the truth never reached the model "
-                    f"({store.n_misses} misses). The capture seam did not fire "
-                    f"— this arm is a stock run wearing an alpha label.")
-            if alpha > 0 and (store.n_misses or store.n_ambiguous):
-                # PARTIAL coverage is the failure the hits==0 check cannot see,
-                # and it is worse than total failure because it still produces a
-                # number. Rows that miss get ordinary model feedback while the
-                # rest get the truth, so the arm is a blend of two treatments
-                # reported as one — and it looks entirely normal.
-                #
-                # Ambiguity is the likely source at scale: two identical
-                # contexts with different futures cannot be told apart, so
-                # `TruthStore.add_fp` drops the fingerprint rather than guess,
-                # and constant or all-missing series make that collision common.
-                raise SystemExit(
-                    f"{benchmark}/{tag}: the truth reached only "
-                    f"{store.n_hits}/{store.n_hits + store.n_misses} rows "
-                    f"({store.n_misses} misses, {store.n_ambiguous} ambiguous "
-                    f"fingerprints). A partially treated arm mixes true-value "
-                    f"feedback with ordinary feedback and reports the mixture "
-                    f"as one number, so it is refused rather than published. "
-                    f"Counts are in {dest / 'truth.json'}.")
+                 "ambiguous_fingerprints": store.n_ambiguous,
+                 "refused": reason}, indent=1))
+            if reason is None:
+                df.to_csv(csv, index=False)
+            else:
+                # NOT to `results.csv`. That name is what the skip check above
+                # and build_table.py both read, so writing a refused arm there
+                # made re-running the command step over it in silence and the
+                # table publish it as a clean row — a worse outcome than the
+                # abort this replaces. The numbers are kept for diagnosis under
+                # a name neither of them looks at.
+                df.to_csv(dest / "results.REFUSED.csv", index=False)
+                refused.append(reason)
+                logger.error("REFUSED %s", reason)
             logger.info("%s/%s: %d rows in %.1fs (truth hits=%d misses=%d "
-                        "ambiguous=%d)", benchmark, tag, len(df),
+                        "ambiguous=%d)%s", benchmark, tag, len(df),
                         time.time() - t0, store.n_hits, store.n_misses,
-                        store.n_ambiguous)
+                        store.n_ambiguous, "" if reason is None else " REFUSED")
             # Released BEFORE the next arm loads its checkpoint — `store`
             # included, or the previous arm's whole truth map is still resident
             # while the next model is read into RAM.
@@ -373,6 +404,15 @@ def main() -> int:
             gc.collect()
             if torch is not None:
                 torch.cuda.empty_cache()
+
+    if refused:
+        # Non-zero, so a sweep with any refused arm still fails loudly — but
+        # only after every other arm has been scored, and with every refusal
+        # named instead of just the first one.
+        raise SystemExit(
+            f"{len(refused)} of {len(args.benchmarks) * len(args.alpha)} arm(s) "
+            f"refused; their numbers are in results.REFUSED.csv and are NOT "
+            f"part of the table:\n  " + "\n  ".join(refused))
     return 0
 
 
