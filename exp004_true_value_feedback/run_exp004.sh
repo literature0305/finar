@@ -158,6 +158,12 @@ PY="${PYTHON:-${REPO}/.venv/bin/python}"
 
 note() { echo "[$(date '+%m-%d %H:%M:%S')] $*"; }
 
+# run_eval.py exits non-zero when it REFUSED an arm, and it refuses per arm —
+# the other arms are scored and publishable. Under `set -e` that exit killed the
+# script before the table stage, so a sweep with one bad arm still handed back
+# nothing. The code is carried to the end instead: the table is built from the
+# arms that passed, and the run still fails.
+EVAL_RC=0
 if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
     note "=== scoring ${CKPT} over alpha ${ALPHA} -> ${OUT}"
     ${DRY} "${PY}" "${HERE}/run_eval.py" \
@@ -169,7 +175,7 @@ if [[ "${STAGE}" == "eval" || "${STAGE}" == "all" ]]; then
         ${FEV_DATA:+--fev-data "${FEV_DATA}"} \
         ${GIFT_DATA:+--gift-data "${GIFT_DATA}"} \
         ${TASK_SUBSET:+--task-subset-index ${TASK_SUBSET% *} \
-                       --num-task-subsets ${TASK_SUBSET#* }}
+                       --num-task-subsets ${TASK_SUBSET#* }} || EVAL_RC=$?
 fi
 
 if [[ "${STAGE}" == "table" || "${STAGE}" == "all" ]]; then
@@ -181,3 +187,7 @@ if [[ "${STAGE}" == "table" || "${STAGE}" == "all" ]]; then
 fi
 
 note "done. results under ${OUT}"
+if [[ "${EVAL_RC}" -ne 0 ]]; then
+    note "run_eval.py exited ${EVAL_RC} — at least one alpha arm was REFUSED and is NOT in the table above. Its reason is in <out>/<bench>/alpha<a>/truth.json and its numbers in results.REFUSED.csv."
+    exit "${EVAL_RC}"
+fi
