@@ -53,6 +53,13 @@ limit_cpu(argv_workers(), quiet=True)
 
 import torch
 
+# Local, and deliberately light — json and pathlib only — so the publish rule
+# can sit at module scope here and in build_table.py without either dragging
+# the other's dependencies in. See arm_status.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from arm_status import (recorded_verdict, refusal_from_counts,  # noqa: E402
+                        write_atomic)
+
 logger = logging.getLogger("finar_exp004")
 
 DEFAULT_REPO = Path("/group-volume/workspace/mun-hak.lee/experiments/"
@@ -222,38 +229,18 @@ def make_adapter(benchmark: str, args):
 def refusal_reason(benchmark, tag, alpha, store, dest) -> "str | None":
     """Why this arm may not be published, or None.
 
-    The two conditions are unchanged; what changed is their SCOPE. They used to
-    `raise SystemExit` from inside the alpha loop, so one arm's data-quality
-    problem aborted the whole sweep: `--alpha "0.0 0.125 0.025 ..."` ran
-    alpha=0 (exempt — `alpha > 0` is false), ran alpha=0.125, and exited before
-    the remaining seven ever started. A per-arm verdict belongs to that arm;
-    the caller collects them and fails at the end, after doing the work.
+    The RULE lives in `arm_status.refusal_from_counts`, shared with
+    build_table.py so the producer and the consumer cannot drift about what
+    counts as publishable. What this wrapper adds is only the live store.
+
+    The scope is what changed: these conditions used to `raise SystemExit`
+    from inside the alpha loop, so one arm's verdict ended the sweep —
+    `--alpha "0.0 0.125 0.025 ..."` ran alpha=0 (exempt), ran alpha=0.125, and
+    exited before the remaining seven started. A per-arm verdict belongs to
+    that arm; the caller collects them and fails at the end.
     """
-    if alpha <= 0:
-        return None
-    if store.n_hits == 0:
-        return (f"{benchmark}/{tag}: the truth never reached the model "
-                f"({store.n_misses} misses). The capture seam did not fire — "
-                f"this arm is a stock run wearing an alpha label.")
-    if store.n_misses or store.n_ambiguous:
-        # PARTIAL coverage is the failure the hits==0 check cannot see, and it
-        # is worse than total failure because it still produces a number. Rows
-        # that miss get ordinary model feedback while the rest get the truth,
-        # so the arm is a blend of two treatments reported as one — and it
-        # looks entirely normal.
-        #
-        # Ambiguity is the likely source at scale: two identical contexts with
-        # different futures cannot be told apart, so `TruthStore.add_fp` drops
-        # the fingerprint rather than guess, and constant or all-missing series
-        # make that collision common.
-        return (f"{benchmark}/{tag}: the truth reached only "
-                f"{store.n_hits}/{store.n_hits + store.n_misses} rows "
-                f"({store.n_misses} misses, {store.n_ambiguous} ambiguous "
-                f"fingerprints). A partially treated arm mixes true-value "
-                f"feedback with ordinary feedback and reports the mixture as "
-                f"one number, so it is refused rather than published. Counts "
-                f"are in {dest / 'truth.json'}.")
-    return None
+    return refusal_from_counts(alpha, store.n_hits, store.n_misses,
+                               store.n_ambiguous, f"{benchmark}/{tag}")
 
 
 def main() -> int:
@@ -338,18 +325,27 @@ def main() -> int:
         manifest.write_text(json.dumps(want, indent=1, default=str))
 
     refused: list[str] = []
+    scored = skipped = 0
     for benchmark in args.benchmarks:
         for alpha in args.alpha:
             tag = f"alpha{alpha:g}"
             dest = args.out / benchmark / tag
             csv = dest / "results.csv"
             if csv.is_file():
-                # Only a PUBLISHED arm is skipped. A refused one wrote
-                # results.REFUSED.csv, so it lands here again and is scored
-                # afresh — which is what a re-run after fixing the capture
-                # should do.
-                logger.info("SKIP %s/%s — already scored", benchmark, tag)
-                continue
+                stale = recorded_verdict(dest, alpha)
+                if stale is None:
+                    logger.info("SKIP %s/%s — already scored", benchmark, tag)
+                    skipped += 1
+                    continue
+                # Existence alone was the skip condition, so an arm the OLD
+                # code refused — it wrote results.csv before raising — was
+                # stepped over on every re-run and never replaced, while the
+                # table quietly excluded it. The sweep then reported success
+                # with that arm simply absent. Re-score it, and move the stale
+                # numbers out of the name the table reads.
+                logger.warning("RE-SCORING %s/%s — the results on disk are "
+                               "refused: %s", benchmark, tag, stale)
+                csv.replace(dest / "results.STALE.csv")
             dest.mkdir(parents=True, exist_ok=True)
             logger.info("=== %s / alpha=%g", benchmark, alpha)
 
@@ -376,13 +372,16 @@ def main() -> int:
                 df = adapter.evaluate(forecaster, output_dir=str(dest),
                                       benchmark_name=name)
             reason = refusal_reason(benchmark, tag, alpha, store, dest)
-            (dest / "truth.json").write_text(json.dumps(
+            write_atomic(dest / "truth.json", lambda p: p.write_text(json.dumps(
                 {"alpha": alpha, "capture_skipped": alpha == 0.0,
                  "truth_hits": store.n_hits, "truth_misses": store.n_misses,
                  "ambiguous_fingerprints": store.n_ambiguous,
-                 "refused": reason}, indent=1))
+                 "refused": reason}, indent=1)))
             if reason is None:
-                df.to_csv(csv, index=False)
+                # Atomic: a crash partway through to_csv left a valid csv
+                # holding the first N tasks, which the skip check accepted and
+                # the table then averaged over a truncated population.
+                write_atomic(csv, lambda p: df.to_csv(p, index=False))
             else:
                 # NOT to `results.csv`. That name is what the skip check above
                 # and build_table.py both read, so writing a refused arm there
@@ -390,9 +389,11 @@ def main() -> int:
                 # table publish it as a clean row — a worse outcome than the
                 # abort this replaces. The numbers are kept for diagnosis under
                 # a name neither of them looks at.
-                df.to_csv(dest / "results.REFUSED.csv", index=False)
+                write_atomic(dest / "results.REFUSED.csv",
+                             lambda p: df.to_csv(p, index=False))
                 refused.append(reason)
                 logger.error("REFUSED %s", reason)
+            scored += 1
             logger.info("%s/%s: %d rows in %.1fs (truth hits=%d misses=%d "
                         "ambiguous=%d)%s", benchmark, tag, len(df),
                         time.time() - t0, store.n_hits, store.n_misses,
@@ -409,10 +410,14 @@ def main() -> int:
         # Non-zero, so a sweep with any refused arm still fails loudly — but
         # only after every other arm has been scored, and with every refusal
         # named instead of just the first one.
+        # Counted over what THIS invocation evaluated, not over what was
+        # requested: with seven arms skipped as already scored, "2 of 9
+        # refused" reads as though nine were assessed.
         raise SystemExit(
-            f"{len(refused)} of {len(args.benchmarks) * len(args.alpha)} arm(s) "
-            f"refused; their numbers are in results.REFUSED.csv and are NOT "
-            f"part of the table:\n  " + "\n  ".join(refused))
+            f"{len(refused)} of {scored} arm(s) evaluated here were REFUSED "
+            f"({skipped} more were skipped as already scored). Their numbers "
+            f"are in results.REFUSED.csv and are NOT part of the table:\n  "
+            + "\n  ".join(refused))
     return 0
 
 

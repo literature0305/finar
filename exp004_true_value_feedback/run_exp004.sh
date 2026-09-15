@@ -183,11 +183,15 @@ if [[ "${STAGE}" == "table" || "${STAGE}" == "all" ]]; then
     # No --iters: build_table.py reads the depth the run was scored at from
     # <out>/manifest.json. Passing ${DEPTH} here tabled iterations 1..2 of a
     # depth-16 run whenever --stage table was invoked without repeating --depth.
-    ${DRY} "${PY}" "${HERE}/build_table.py" "${OUT}"
+    # The eval code must survive a table failure too: under `set -e` a failing
+    # build_table would exit with ITS status and the refusal would be lost.
+    TABLE_RC=0
+    ${DRY} "${PY}" "${HERE}/build_table.py" "${OUT}" || TABLE_RC=$?
+    [[ "${EVAL_RC}" -eq 0 ]] && EVAL_RC="${TABLE_RC}"
 fi
 
 note "done. results under ${OUT}"
 if [[ "${EVAL_RC}" -ne 0 ]]; then
-    note "run_eval.py exited ${EVAL_RC} — at least one alpha arm was REFUSED and is NOT in the table above. Its reason is in <out>/<bench>/alpha<a>/truth.json and its numbers in results.REFUSED.csv."
+    note "exit ${EVAL_RC} — at least one alpha arm was REFUSED and is NOT in the table above. Its reason is in <out>/<bench>/alpha<a>/truth.json and its numbers in results.REFUSED.csv."
     exit "${EVAL_RC}"
 fi
